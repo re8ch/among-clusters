@@ -7,6 +7,9 @@ gateway:
   namespace: kube-system
 certificate:
   issuer: re8ch-cloudflare-dns01
+publication:
+  bootstrapTarget: ""
+  selectedEdge: ""
 resources:
   requests: {cpu: 50m, memory: 64Mi}
   limits: {cpu: 500m, memory: 256Mi}
