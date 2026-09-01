@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: among-clusters-hub}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: among-clusters-hub}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: among-clusters-hub}}
+    spec:
+      serviceAccountName: among-clusters-hub
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: hub
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          command: [/hub]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: among-clusters-hub}
+spec: {selector: {app.kubernetes.io/name: among-clusters-hub}, ports: [{name: http, port: 80, targetPort: http}]}

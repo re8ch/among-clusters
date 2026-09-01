@@ -1,0 +1,24 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: among-clusters-ingest-tls}
+spec:
+  secretName: among-clusters-ingest-tls
+  dnsNames: ["{{ .Values.hostname }}"]
+  issuerRef: {kind: ClusterIssuer, name: "{{ .Values.certificate.issuer }}"}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: among-clusters-ingest
+  labels: {public.re8ch.com/external-dns: enabled}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: "{{ .Values.hostname }}"
+    external-dns.alpha.kubernetes.io/ttl: "60"
+spec:
+  parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: https}]
+  hostnames: ["{{ .Values.hostname }}"]
+  rules:
+    - matches: [{path: {type: PathPrefix, value: /v1/agents}}]
+      backendRefs: [{name: among-clusters-hub, port: 80}]
+    - matches: [{path: {type: Exact, value: /healthz}}]
+      backendRefs: [{name: among-clusters-hub, port: 80}]

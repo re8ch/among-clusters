@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: among-clusters-hub}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: among-clusters-hub}
+rules:
+  - apiGroups: [collaboration.re8ch.com]
+    resources: [collaborationclusters, collaborationclusters/status, collaborationrelationships, collaborationrelationships/status, publishedservices, publishedservices/status, collaborationevents]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: among-clusters-hub}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: among-clusters-hub}
+subjects: [{kind: ServiceAccount, name: among-clusters-hub, namespace: "{{ .Release.Namespace }}"}]

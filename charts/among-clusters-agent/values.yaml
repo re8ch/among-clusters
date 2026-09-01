@@ -1,0 +1,9 @@
+clusterID: ""
+hubEndpoint: https://among-clusters.re8ch.com
+image:
+  repository: ghcr.io/re8ch/among-clusters
+  digest: ""
+identitySecret: among-clusters-agent-identity
+resources:
+  requests: {cpu: 25m, memory: 32Mi}
+  limits: {cpu: 250m, memory: 128Mi}
