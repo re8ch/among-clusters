@@ -1,0 +1,13 @@
+{{- if .Values.ciliumPolicy.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: among-clusters-agent-kube-apiserver}
+spec:
+  endpointSelector: {matchLabels: {app.kubernetes.io/name: among-clusters-agent}}
+  egress:
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}
+            - {port: "6443", protocol: TCP}
+{{- end }}
