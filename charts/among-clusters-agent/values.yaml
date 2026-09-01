@@ -4,6 +4,11 @@ image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
 identitySecret: among-clusters-agent-identity
+apiServer:
+  # Kubernetes NetworkPolicy implementations may evaluate egress after Service
+  # DNAT. Owners must list their control-plane endpoint CIDRs explicitly.
+  cidrs: []
+  port: 6443
 resources:
   requests: {cpu: 25m, memory: 32Mi}
   limits: {cpu: 250m, memory: 128Mi}

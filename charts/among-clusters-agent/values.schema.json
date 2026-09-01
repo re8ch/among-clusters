@@ -1,1 +1,27 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["clusterID","hubEndpoint","image"],"properties":{"clusterID":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]*$"},"hubEndpoint":{"type":"string","pattern":"^https://"},"image":{"type":"object","required":["repository","digest"],"properties":{"repository":{"type":"string"},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}}},"identitySecret":{"type":"string"}},"additionalProperties":true}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["clusterID", "hubEndpoint", "image", "apiServer"],
+  "properties": {
+    "clusterID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "hubEndpoint": {"type": "string", "pattern": "^https://"},
+    "image": {
+      "type": "object",
+      "required": ["repository", "digest"],
+      "properties": {
+        "repository": {"type": "string"},
+        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "identitySecret": {"type": "string"},
+    "apiServer": {
+      "type": "object",
+      "required": ["cidrs", "port"],
+      "properties": {
+        "cidrs": {"type": "array", "items": {"type": "string", "format": "ipv4"}},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    }
+  },
+  "additionalProperties": true
+}

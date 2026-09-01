@@ -6,6 +6,13 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress: []
   egress:
+    {{- if .Values.apiServer.cidrs }}
+    - to:
+        {{- range .Values.apiServer.cidrs }}
+        - ipBlock: {cidr: {{ . | quote }}}
+        {{- end }}
+      ports: [{protocol: TCP, port: {{ .Values.apiServer.port }} }]
+    {{- end }}
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports: [{protocol: TCP, port: 443}]
