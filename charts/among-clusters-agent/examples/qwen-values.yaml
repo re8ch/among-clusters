@@ -1,0 +1,3 @@
+clusterID: qwen
+hubEndpoint: https://among-clusters.re8ch.com
+image: {repository: ghcr.io/re8ch/among-clusters, digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}

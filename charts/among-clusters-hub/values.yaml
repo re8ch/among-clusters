@@ -1,0 +1,12 @@
+image:
+  repository: ghcr.io/re8ch/among-clusters
+  digest: ""
+hostname: among-clusters.re8ch.com
+gateway:
+  name: re8ch-gateway-canary
+  namespace: kube-system
+certificate:
+  issuer: re8ch-cloudflare-dns01
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 256Mi}
