@@ -1,6 +1,6 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
-metadata: {name: among-clusters-ingest-tls}
+metadata: {name: among-clusters-ingest-tls, namespace: "{{ .Values.gateway.namespace }}"}
 spec:
   secretName: among-clusters-ingest-tls
   dnsNames: ["{{ .Values.hostname }}"]
@@ -15,7 +15,7 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: "{{ .Values.hostname }}"
     external-dns.alpha.kubernetes.io/ttl: "60"
 spec:
-  parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: https}]
+  parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: among-clusters-https}]
   hostnames: ["{{ .Values.hostname }}"]
   rules:
     - matches: [{path: {type: PathPrefix, value: /v1/agents}}]
