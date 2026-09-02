@@ -20,8 +20,9 @@ import (
 )
 
 type exportRoute struct {
-	ServiceIdentity string `json:"serviceIdentity"`
-	Target          string `json:"target"`
+	ServiceIdentity string   `json:"serviceIdentity"`
+	Target          string   `json:"target"`
+	TargetPeers     []string `json:"targetPeers"`
 }
 type importRoute struct {
 	Listen           string `json:"listen"`
@@ -36,18 +37,19 @@ func main() {
 	cert, roots := credentials()
 	var exports []exportRoute
 	var imports []importRoute
-	if json.Unmarshal([]byte(env("EXPORTS_JSON", "[]")), &exports) != nil || json.Unmarshal([]byte(env("IMPORTS_JSON", "[]")), &imports) != nil {
+	peerIdentities := map[string][]string{}
+	if json.Unmarshal([]byte(env("EXPORTS_JSON", "[]")), &exports) != nil || json.Unmarshal([]byte(env("IMPORTS_JSON", "[]")), &imports) != nil || json.Unmarshal([]byte(env("PEER_IDENTITIES_JSON", "{}")), &peerIdentities) != nil {
 		log.Fatal("invalid service routing configuration")
 	}
-	routes := map[string]string{}
+	routes := map[string]exportRoute{}
 	for _, route := range exports {
 		if route.ServiceIdentity == "" || route.Target == "" {
 			log.Fatal("invalid export route")
 		}
-		routes[route.ServiceIdentity] = route.Target
+		routes[route.ServiceIdentity] = route
 	}
 	if os.Getenv("LISTENER_ENABLED") == "true" {
-		go serveQUIC(ctx, cert, roots, routes)
+		go serveQUIC(ctx, cert, roots, routes, peerIdentities)
 	}
 	for _, route := range imports {
 		route := route
@@ -105,7 +107,7 @@ func tlsConfig(cert tls.Certificate, roots *x509.CertPool, expected string, serv
 	}
 	return c
 }
-func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]string) {
+func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]exportRoute, peerIdentities map[string][]string) {
 	listener, err := quic.ListenAddr(env("LISTEN_ADDRESS", ":8443"), tlsConfig(cert, roots, "", true), &quic.Config{KeepAlivePeriod: 15 * time.Second})
 	if err != nil {
 		log.Fatal(err)
@@ -117,12 +119,18 @@ func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, 
 		}
 		go func() {
 			defer connection.CloseWithError(0, "closed")
+			peerIdentity := ""
+			certificates := connection.ConnectionState().TLS.PeerCertificates
+			if len(certificates) == 0 || len(certificates[0].URIs) != 1 {
+				return
+			}
+			peerIdentity = strings.TrimSuffix(certificates[0].URIs[0].String(), "/")
 			for {
 				stream, err := connection.AcceptStream(ctx)
 				if err != nil {
 					return
 				}
-				go handleExport(stream, routes)
+				go handleExport(stream, routes, peerIdentities, peerIdentity)
 			}
 		}()
 	}
@@ -134,7 +142,7 @@ type readWriteCloser interface {
 	io.Closer
 }
 
-func handleExport(stream readWriteCloser, routes map[string]string) {
+func handleExport(stream readWriteCloser, routes map[string]exportRoute, peerIdentities map[string][]string, peerIdentity string) {
 	defer stream.Close()
 	var size uint16
 	if binary.Read(stream, binary.BigEndian, &size) != nil || size == 0 || size > 2048 {
@@ -144,18 +152,18 @@ func handleExport(stream readWriteCloser, routes map[string]string) {
 	if _, err := io.ReadFull(stream, identity); err != nil {
 		return
 	}
-	resolved := make(map[string]string, len(routes))
+	resolved := make(map[string]exportRoute, len(routes))
 	for key, value := range routes {
 		resolved[key] = value
 	}
 	for _, route := range readExportFile(env("EXPORTS_FILE", "/routes/exports.json")) {
-		resolved[route.ServiceIdentity] = route.Target
+		resolved[route.ServiceIdentity] = route
 	}
-	target, ok := resolved[string(identity)]
-	if !ok {
+	route, ok := resolved[string(identity)]
+	if !ok || !routeAllowsIdentity(route, peerIdentities, peerIdentity) {
 		return
 	}
-	upstream, err := net.DialTimeout("tcp", target, 5*time.Second)
+	upstream, err := net.DialTimeout("tcp", route.Target, 5*time.Second)
 	if err != nil {
 		return
 	}
@@ -170,6 +178,17 @@ func handleExport(stream readWriteCloser, routes map[string]string) {
 	}()
 	go func() { io.Copy(stream, upstream); stream.Close(); done <- struct{}{} }()
 	<-done
+}
+func routeAllowsIdentity(route exportRoute, peerIdentities map[string][]string, identity string) bool {
+	identity = strings.TrimSuffix(identity, "/")
+	for _, peer := range route.TargetPeers {
+		for _, allowed := range peerIdentities[peer] {
+			if strings.TrimSuffix(allowed, "/") == identity {
+				return true
+			}
+		}
+	}
+	return false
 }
 func readExportFile(path string) []exportRoute {
 	data, err := os.ReadFile(path)

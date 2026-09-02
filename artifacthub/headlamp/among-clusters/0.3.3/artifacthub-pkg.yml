@@ -1,0 +1,13 @@
+version: 0.3.3
+name: AmongClusters Headlamp Plugin
+displayName: AmongClusters Headlamp Plugin
+createdAt: 2026-09-02T19:20:00+08:00
+description: Read-only browser for sovereign BYOC trust domains, peers, links, service advertisements, imports and managed access state.
+license: Apache-2.0
+homeURL: https://github.com/re8ch/among-clusters
+containersImages: []
+annotations:
+  headlamp/plugin/archive-url: https://github.com/re8ch/among-clusters/releases/download/v0.3.3/re8ch-headlamp-among-clusters-0.3.3.tar.gz
+  headlamp/plugin/archive-checksum: sha256:ebb289e90a6bf9e055cd22a9e17cf51102ee976ae7434b8e3abe534cc6752dcb
+  headlamp/plugin/version-compat: ">=0.30.0"
+  headlamp/plugin/distro-compat: "in-cluster"

@@ -50,7 +50,9 @@ annotations. The Agent sends the full contract in a signed `service.snapshot`;
 the Hub accepts it only when the referenced `PeerPolicy` permits the publisher,
 peer, class, protocol, port and export direction. Removed labels revoke the
 advertisement. The QUIC Gateway routes streams by SPIFFE service identity and
-never exposes Pod or EndpointSlice addresses.
+never exposes Pod or EndpointSlice addresses. Each export also carries its
+target Peer refs; `gateway.peerIdentities` binds those refs to allowed caller
+SPIFFE IDs so trust-bundle membership alone never grants service access.
 
 Managed Kubernetes access requires both `spec.approved=true` on the Hub grant
 and an owner-created `among-clusters-approval-<grant>` ConfigMap in the BYOC
