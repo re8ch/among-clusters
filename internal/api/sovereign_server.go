@@ -58,8 +58,16 @@ func (s *SovereignServer) createInvitation(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid ttl", 400)
 		return
 	}
-	id, _ := protocol.RandomToken(12)
-	token, _ := protocol.RandomToken(32)
+	id, err := protocol.RandomID(12)
+	if err != nil {
+		http.Error(w, "entropy unavailable", 503)
+		return
+	}
+	token, err := protocol.RandomToken(32)
+	if err != nil {
+		http.Error(w, "entropy unavailable", 503)
+		return
+	}
 	v := model.Invitation{ID: id, Tenant: input.Tenant, ExpiresAt: s.now().Add(time.Duration(input.TTLSeconds) * time.Second), Capabilities: input.Capabilities, TokenHash: protocol.TokenHash(token)}
 	if err := s.Store.CreateInvitation(r.Context(), v); err != nil {
 		http.Error(w, "conflict", 409)

@@ -25,6 +25,13 @@ func RandomToken(bytes int) (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
+func RandomID(bytes int) (string, error) {
+	value := make([]byte, bytes)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value), nil
+}
 func TokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return "sha256:" + hex.EncodeToString(sum[:])
