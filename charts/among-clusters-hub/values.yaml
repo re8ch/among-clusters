@@ -1,6 +1,11 @@
 image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
+adminTokenSecret: among-clusters-hub-admin
+managedAccess:
+  enabled: false
+migration:
+  replaceCollaborationCRDs: false
 hostname: among-clusters.re8ch.com
 gateway:
   name: re8ch-gateway-canary

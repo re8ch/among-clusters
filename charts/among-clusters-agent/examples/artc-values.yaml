@@ -1,4 +1,6 @@
 clusterID: artc
+tenant: artc
+trustDomain: artc.customer.example
 hubEndpoint: https://among-clusters.re8ch.com
 apiServer: {cidrs: [10.181.22.68/32], port: 6443}
 image: {repository: ghcr.io/re8ch/among-clusters, digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}

@@ -14,6 +14,10 @@ spec:
           image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
           imagePullPolicy: IfNotPresent
           command: [/hub]
+          env:
+            - name: ADMIN_TOKEN
+              valueFrom: {secretKeyRef: {name: "{{ .Values.adminTokenSecret }}", key: token}}
+            - {name: MANAGED_ACCESS_ENABLED, value: {{ .Values.managedAccess.enabled | quote }}}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}

@@ -11,7 +11,37 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - uses: azure/setup-helm@v4
-      - run: helm lint charts/among-clusters-hub --set image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-      - run: helm lint charts/among-clusters-agent -f charts/among-clusters-agent/examples/artc-values.yaml
-      - run: helm template hub charts/among-clusters-hub --set image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa >/tmp/hub.yaml
-      - run: helm template agent charts/among-clusters-agent -f charts/among-clusters-agent/examples/qwen-values.yaml >/tmp/agent.yaml
+      - name: Lint and render all charts
+        run: |
+          digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          helm lint charts/among-clusters-hub --set image.digest=$digest
+          helm template hub charts/among-clusters-hub --set image.digest=$digest >/tmp/hub.yaml
+          helm lint charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest
+          helm template agent charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest >/tmp/agent.yaml
+          helm lint charts/among-clusters-headlamp --set headlamp.pluginsPVC.existingClaim=plugins
+          helm template headlamp charts/among-clusters-headlamp --set headlamp.pluginsPVC.existingClaim=plugins >/tmp/headlamp.yaml
+          helm dependency build charts/among-clusters
+          helm lint charts/among-clusters --set agent.enabled=true --set among-clusters-agent.clusterID=test --set among-clusters-agent.tenant=test --set among-clusters-agent.trustDomain=test.example --set among-clusters-agent.image.digest=$digest
+      - name: Enforce sovereign API and least privilege
+        run: |
+          test "$(grep -c '^kind: CustomResourceDefinition' charts/among-clusters-hub/crds/sovereign-peering.yaml)" = 7
+          if grep -R 'cluster-admin' charts; then exit 1; fi
+          if grep -R 'resources:.*secrets.*verbs:.*list' charts/among-clusters-agent; then exit 1; fi
+          if grep -R 'RouteAdvertisement\|podCIDR\|remote.*kubeconfig' charts/among-clusters-hub/crds; then exit 1; fi
+          grep -q 'migration.replaceCollaborationCRDs=true' charts/among-clusters-hub/templates/migration-guard.yaml
+  headlamp:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: ui/headlamp-plugin}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: {version: 11.19.0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22", cache: pnpm, cache-dependency-path: ui/headlamp-plugin/pnpm-lock.yaml}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run tsc && pnpm run lint && pnpm run build
+      - name: Verify embedded plugin digest and read-only API surface
+        working-directory: .
+        run: |
+          echo 'a155e0e9717b040ac07260ff8ad49ba7223f48ca13806bf3961d20f1f3f283be  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
+          if grep -R 'create\|update\|delete\|Secret' ui/headlamp-plugin/src; then exit 1; fi

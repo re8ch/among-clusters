@@ -1,9 +1,29 @@
 clusterID: ""
+tenant: ""
+trustDomain: ""
 hubEndpoint: https://among-clusters.re8ch.com
 image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
 identitySecret: among-clusters-agent-identity
+invitation:
+  existingSecret: among-clusters-invitation
+  idKey: invitation-id
+  tokenKey: token
+gateway:
+  # Existing Secret populated from mutually confirmed peer bundles. It must
+  # contain ca.crt when the QUIC listener is enabled.
+  peerBundleSecret: ""
+  listener:
+    enabled: false
+    port: 8443
+    publicEndpoint: ""
+  service:
+    type: ClusterIP
+advertisements: []
+managedAccess:
+  enabled: false
+  serviceAccountName: among-clusters-managed-access
 hostAliases: []
 networkPolicy:
   enabled: true

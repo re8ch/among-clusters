@@ -1,0 +1,22 @@
+{{- if .Values.migration.replaceCollaborationCRDs }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: among-clusters-v020-crd-replacement
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: among-clusters-hub
+      automountServiceAccountToken: true
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          command: [/migrate]
+          env: [{name: REPLACE_COLLABORATION_CRDS, value: "true"}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+{{- end }}

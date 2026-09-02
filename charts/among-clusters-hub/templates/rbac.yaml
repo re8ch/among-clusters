@@ -6,9 +6,20 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata: {name: among-clusters-hub}
 rules:
-  - apiGroups: [collaboration.re8ch.com]
-    resources: [collaborationclusters, collaborationclusters/status, collaborationrelationships, collaborationrelationships/status, publishedservices, publishedservices/status, collaborationevents]
+  - apiGroups: [peering.re8ch.com]
+    resources: [clusteridentities, clusteridentities/status, peers, peers/status, authenticatedlinks, authenticatedlinks/status, peerpolicies, serviceadvertisements, serviceadvertisements/status, importedservices, importedservices/status, managedaccessgrants, managedaccessgrants/status]
     verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [secrets, services]
+    verbs: [get, list, create, update, patch]
+  {{- if .Values.migration.replaceCollaborationCRDs }}
+  - apiGroups: [collaboration.re8ch.com]
+    resources: [collaborationclusters, collaborationrelationships, publishedservices, collaborationevents]
+    verbs: [get, list]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, delete]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -22,6 +33,6 @@ metadata:
   name: among-clusters-view
   labels: {rbac.authorization.k8s.io/aggregate-to-view: "true"}
 rules:
-  - apiGroups: [collaboration.re8ch.com]
-    resources: [collaborationclusters, collaborationrelationships, publishedservices, collaborationevents]
+  - apiGroups: [peering.re8ch.com]
+    resources: [clusteridentities, peers, authenticatedlinks, peerpolicies, serviceadvertisements, importedservices, managedaccessgrants]
     verbs: [get, list, watch]
