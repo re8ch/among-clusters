@@ -108,9 +108,10 @@ func (r *SovereignReconciler) reconcileLinks(ctx context.Context) {
 	}
 	for i := range list.Items {
 		o := &list.Items[i]
+		local, _, _ := unstructured.NestedString(o.Object, "spec", "localGateway")
 		remote, _, _ := unstructured.NestedString(o.Object, "spec", "remoteGateway")
 		state, reason := "Connecting", ""
-		if remote == "" {
+		if local == "" && remote == "" {
 			state, reason = "Blocked", "NATUnreachable"
 		} else if observedValue, found, _ := unstructured.NestedString(o.Object, "status", "lastObservedAt"); found {
 			if observed, parseErr := time.Parse(time.RFC3339, observedValue); parseErr == nil && r.now().Sub(observed) <= 45*time.Second {
