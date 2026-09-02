@@ -15,6 +15,9 @@ peerConfirmations: []
 linkObservations: []
 gateway:
   nodeSelector: {}
+  # Optional provider metadata. The public chart deliberately defines no
+  # provider address or topology; deployment owners supply those values.
+  publicAuthority: {}
   # Existing Secret populated from mutually confirmed peer bundles. It must
   # contain ca.crt when the QUIC listener is enabled.
   peerBundleSecret: ""
@@ -27,6 +30,10 @@ gateway:
     type: ClusterIP
   exports: []
   imports: []
+  # BYOC clusters normally dial the provider-owned public authority and keep
+  # this authenticated QUIC session alive. Either side may open service streams
+  # over it; consumers never need a route to a customer's private Node IP.
+  sessions: []
   peerIdentities: {}
 advertisements: []
 managedAccess:

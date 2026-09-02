@@ -62,7 +62,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata: {name: among-clusters-gateway}
-{{- if and (or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0)) (not .Values.gateway.peerBundleSecret) }}{{ fail "gateway.peerBundleSecret is required for listener or imports" }}{{- end }}
+{{- if and (or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) (gt (len .Values.gateway.sessions) 0)) (not .Values.gateway.peerBundleSecret) }}{{ fail "gateway.peerBundleSecret is required for listener, imports, or sessions" }}{{- end }}
 spec:
   {{- if gt (int .Values.gateway.listener.hostPort) 0 }}
   strategy: {type: Recreate}
@@ -87,6 +87,7 @@ spec:
             - {name: EXPORTS_JSON, value: {{ .Values.gateway.exports | toJson | quote }}}
             - {name: EXPORTS_FILE, value: /routes/exports.json}
             - {name: IMPORTS_JSON, value: {{ .Values.gateway.imports | toJson | quote }}}
+            - {name: PEER_SESSIONS_JSON, value: {{ .Values.gateway.sessions | toJson | quote }}}
             - {name: PEER_IDENTITIES_JSON, value: {{ .Values.gateway.peerIdentities | toJson | quote }}}
           ports:
             - name: gateway
@@ -105,7 +106,7 @@ spec:
           volumeMounts:
             - {name: identity, mountPath: /identity, readOnly: true}
             - {name: service-routes, mountPath: /routes, readOnly: true}
-          {{- if or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) }}
+          {{- if or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) (gt (len .Values.gateway.sessions) 0) }}
             - {name: peer-bundles, mountPath: /peer-bundles, readOnly: true}
           {{- end }}
       volumes:
@@ -113,7 +114,7 @@ spec:
           secret: {secretName: "{{ .Values.identitySecret }}", optional: true}
         - name: service-routes
           configMap: {name: among-clusters-service-routes, optional: true}
-        {{- if or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) }}
+        {{- if or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) (gt (len .Values.gateway.sessions) 0) }}
         - name: peer-bundles
           secret: {secretName: "{{ .Values.gateway.peerBundleSecret }}"}
         {{- end }}
