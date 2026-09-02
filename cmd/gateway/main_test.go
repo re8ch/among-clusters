@@ -46,6 +46,26 @@ func TestExportTunnelRoutesByServiceIdentity(t *testing.T) {
 	}
 }
 
+func TestExportAcknowledgesSessionHeartbeat(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	go handleExport(server, nil, nil, "spiffe://caller.test/cluster/caller")
+	identity := []byte(sessionHeartbeatIdentity)
+	if err := binary.Write(client, binary.BigEndian, uint16(len(identity))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write(identity); err != nil {
+		t.Fatal(err)
+	}
+	ack := []byte{0}
+	if _, err := io.ReadFull(client, ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack[0] != 1 {
+		t.Fatalf("unexpected heartbeat acknowledgement %d", ack[0])
+	}
+}
+
 func TestSessionRegistryUsesCanonicalIdentityAndSafeReplacement(t *testing.T) {
 	registry := newSessionRegistry()
 	first := new(quic.Conn)

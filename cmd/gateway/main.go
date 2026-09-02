@@ -41,6 +41,8 @@ type sessionRegistry struct {
 	sessions map[string]*quic.Conn
 }
 
+const sessionHeartbeatIdentity = "among-clusters.internal/session-heartbeat"
+
 func newSessionRegistry() *sessionRegistry {
 	return &sessionRegistry{sessions: map[string]*quic.Conn{}}
 }
@@ -183,12 +185,53 @@ func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, 
 func handleConnection(ctx context.Context, connection *quic.Conn, peerIdentity string, routes map[string]exportRoute, peerIdentities map[string][]string, registry *sessionRegistry) {
 	registry.put(peerIdentity, connection)
 	defer registry.remove(peerIdentity, connection)
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	defer cancelHeartbeat()
+	go maintainConnectionHeartbeat(heartbeatCtx, connection)
 	for {
 		stream, err := connection.AcceptStream(ctx)
 		if err != nil {
+			log.Printf("peer session %s closed: %v", peerIdentity, err)
 			return
 		}
 		go handleExport(stream, routes, peerIdentities, peerIdentity)
+	}
+}
+
+func maintainConnectionHeartbeat(ctx context.Context, connection *quic.Conn) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			stream, err := connection.OpenStreamSync(ctx)
+			if err != nil {
+				connection.CloseWithError(1, "session heartbeat failed")
+				return
+			}
+			identity := []byte(sessionHeartbeatIdentity)
+			deadline := time.Now().Add(5 * time.Second)
+			_ = stream.SetDeadline(deadline)
+			if binary.Write(stream, binary.BigEndian, uint16(len(identity))) != nil {
+				stream.CancelWrite(1)
+				connection.CloseWithError(1, "session heartbeat failed")
+				return
+			}
+			if _, err = stream.Write(identity); err != nil {
+				stream.CancelWrite(1)
+				connection.CloseWithError(1, "session heartbeat failed")
+				return
+			}
+			ack := []byte{0}
+			if _, err = io.ReadFull(stream, ack); err != nil || ack[0] != 1 {
+				stream.CancelRead(1)
+				connection.CloseWithError(1, "session heartbeat unacknowledged")
+				return
+			}
+			stream.Close()
+		}
 	}
 }
 
@@ -223,6 +266,10 @@ func handleExport(stream readWriteCloser, routes map[string]exportRoute, peerIde
 	}
 	identity := make([]byte, size)
 	if _, err := io.ReadFull(stream, identity); err != nil {
+		return
+	}
+	if string(identity) == sessionHeartbeatIdentity {
+		_, _ = stream.Write([]byte{1})
 		return
 	}
 	resolved := make(map[string]exportRoute, len(routes))
