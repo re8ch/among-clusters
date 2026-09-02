@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +30,38 @@ type importRoute struct {
 	Endpoint         string `json:"endpoint"`
 	ServiceIdentity  string `json:"serviceIdentity"`
 	ExpectedSPIFFEID string `json:"expectedSPIFFEID"`
+	SessionOnly      bool   `json:"sessionOnly"`
+}
+type peerSession struct {
+	Endpoint         string `json:"endpoint"`
+	ExpectedSPIFFEID string `json:"expectedSPIFFEID"`
+}
+type sessionRegistry struct {
+	mu       sync.RWMutex
+	sessions map[string]*quic.Conn
+}
+
+func newSessionRegistry() *sessionRegistry {
+	return &sessionRegistry{sessions: map[string]*quic.Conn{}}
+}
+func canonicalIdentity(identity string) string { return strings.TrimSuffix(identity, "/") }
+func (r *sessionRegistry) put(identity string, connection *quic.Conn) {
+	r.mu.Lock()
+	r.sessions[canonicalIdentity(identity)] = connection
+	r.mu.Unlock()
+}
+func (r *sessionRegistry) get(identity string) *quic.Conn {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.sessions[canonicalIdentity(identity)]
+}
+func (r *sessionRegistry) remove(identity string, connection *quic.Conn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := canonicalIdentity(identity)
+	if r.sessions[key] == connection {
+		delete(r.sessions, key)
+	}
 }
 
 func main() {
@@ -37,8 +70,9 @@ func main() {
 	cert, roots := credentials()
 	var exports []exportRoute
 	var imports []importRoute
+	var sessions []peerSession
 	peerIdentities := map[string][]string{}
-	if json.Unmarshal([]byte(env("EXPORTS_JSON", "[]")), &exports) != nil || json.Unmarshal([]byte(env("IMPORTS_JSON", "[]")), &imports) != nil || json.Unmarshal([]byte(env("PEER_IDENTITIES_JSON", "{}")), &peerIdentities) != nil {
+	if json.Unmarshal([]byte(env("EXPORTS_JSON", "[]")), &exports) != nil || json.Unmarshal([]byte(env("IMPORTS_JSON", "[]")), &imports) != nil || json.Unmarshal([]byte(env("PEER_SESSIONS_JSON", "[]")), &sessions) != nil || json.Unmarshal([]byte(env("PEER_IDENTITIES_JSON", "{}")), &peerIdentities) != nil {
 		log.Fatal("invalid service routing configuration")
 	}
 	routes := map[string]exportRoute{}
@@ -48,12 +82,20 @@ func main() {
 		}
 		routes[route.ServiceIdentity] = route
 	}
+	registry := newSessionRegistry()
 	if os.Getenv("LISTENER_ENABLED") == "true" {
-		go serveQUIC(ctx, cert, roots, routes, peerIdentities)
+		go serveQUIC(ctx, cert, roots, routes, peerIdentities, registry)
+	}
+	for _, session := range sessions {
+		if session.Endpoint == "" || session.ExpectedSPIFFEID == "" {
+			log.Fatal("peer session requires endpoint and expectedSPIFFEID")
+		}
+		session := session
+		go maintainSession(ctx, cert, roots, routes, peerIdentities, registry, session)
 	}
 	for _, route := range imports {
 		route := route
-		go serveImport(ctx, cert, roots, route)
+		go serveImport(ctx, cert, roots, registry, route)
 	}
 	<-ctx.Done()
 }
@@ -116,7 +158,7 @@ func currentCertificate(fallback tls.Certificate) (*tls.Certificate, error) {
 	}
 	return &certificate, nil
 }
-func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]exportRoute, peerIdentities map[string][]string) {
+func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]exportRoute, peerIdentities map[string][]string, registry *sessionRegistry) {
 	listener, err := quic.ListenAddr(env("LISTEN_ADDRESS", ":8443"), tlsConfig(cert, roots, "", true), &quic.Config{KeepAlivePeriod: 15 * time.Second})
 	if err != nil {
 		log.Fatal(err)
@@ -128,20 +170,42 @@ func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, 
 		}
 		go func() {
 			defer connection.CloseWithError(0, "closed")
-			peerIdentity := ""
 			certificates := connection.ConnectionState().TLS.PeerCertificates
 			if len(certificates) == 0 || len(certificates[0].URIs) != 1 {
 				return
 			}
-			peerIdentity = strings.TrimSuffix(certificates[0].URIs[0].String(), "/")
-			for {
-				stream, err := connection.AcceptStream(ctx)
-				if err != nil {
-					return
-				}
-				go handleExport(stream, routes, peerIdentities, peerIdentity)
-			}
+			peerIdentity := canonicalIdentity(certificates[0].URIs[0].String())
+			handleConnection(ctx, connection, peerIdentity, routes, peerIdentities, registry)
 		}()
+	}
+}
+
+func handleConnection(ctx context.Context, connection *quic.Conn, peerIdentity string, routes map[string]exportRoute, peerIdentities map[string][]string, registry *sessionRegistry) {
+	registry.put(peerIdentity, connection)
+	defer registry.remove(peerIdentity, connection)
+	for {
+		stream, err := connection.AcceptStream(ctx)
+		if err != nil {
+			return
+		}
+		go handleExport(stream, routes, peerIdentities, peerIdentity)
+	}
+}
+
+func maintainSession(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]exportRoute, peerIdentities map[string][]string, registry *sessionRegistry, session peerSession) {
+	for ctx.Err() == nil {
+		connection, err := quic.DialAddr(ctx, strings.TrimPrefix(session.Endpoint, "quic://"), tlsConfig(cert, roots, session.ExpectedSPIFFEID, false), &quic.Config{KeepAlivePeriod: 15 * time.Second, HandshakeIdleTimeout: 5 * time.Second})
+		if err != nil {
+			log.Printf("peer session %s: %v", session.ExpectedSPIFFEID, err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(3 * time.Second):
+			}
+			continue
+		}
+		handleConnection(ctx, connection, session.ExpectedSPIFFEID, routes, peerIdentities, registry)
+		connection.CloseWithError(0, "reconnecting")
 	}
 }
 
@@ -210,7 +274,7 @@ func readExportFile(path string) []exportRoute {
 	}
 	return routes
 }
-func serveImport(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, route importRoute) {
+func serveImport(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, registry *sessionRegistry, route importRoute) {
 	listener, err := net.Listen("tcp", route.Listen)
 	if err != nil {
 		log.Printf("import %s: %v", route.ServiceIdentity, err)
@@ -222,18 +286,36 @@ func serveImport(ctx context.Context, cert tls.Certificate, roots *x509.CertPool
 		if err != nil {
 			return
 		}
-		go proxyImport(ctx, client, cert, roots, route)
+		go proxyImport(ctx, client, cert, roots, registry, route)
 	}
 }
-func proxyImport(ctx context.Context, client net.Conn, cert tls.Certificate, roots *x509.CertPool, route importRoute) {
+func proxyImport(ctx context.Context, client net.Conn, cert tls.Certificate, roots *x509.CertPool, registry *sessionRegistry, route importRoute) {
 	defer client.Close()
-	connection, err := quic.DialAddr(ctx, route.Endpoint, tlsConfig(cert, roots, route.ExpectedSPIFFEID, false), &quic.Config{HandshakeIdleTimeout: 5 * time.Second})
-	if err != nil {
-		return
+	connection := registry.get(route.ExpectedSPIFFEID)
+	owned := false
+	if connection == nil {
+		if route.SessionOnly {
+			log.Printf("import %s: authenticated peer session unavailable", route.ServiceIdentity)
+			return
+		}
+		if route.Endpoint == "" {
+			log.Printf("import %s: no authenticated session or fallback endpoint", route.ServiceIdentity)
+			return
+		}
+		var err error
+		connection, err = quic.DialAddr(ctx, strings.TrimPrefix(route.Endpoint, "quic://"), tlsConfig(cert, roots, route.ExpectedSPIFFEID, false), &quic.Config{HandshakeIdleTimeout: 5 * time.Second})
+		if err != nil {
+			log.Printf("import %s dial: %v", route.ServiceIdentity, err)
+			return
+		}
+		owned = true
 	}
-	defer connection.CloseWithError(0, "closed")
+	if owned {
+		defer connection.CloseWithError(0, "closed")
+	}
 	stream, err := connection.OpenStreamSync(ctx)
 	if err != nil {
+		log.Printf("import %s stream: %v", route.ServiceIdentity, err)
 		return
 	}
 	identity := []byte(route.ServiceIdentity)
