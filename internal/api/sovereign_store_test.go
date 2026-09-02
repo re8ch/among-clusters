@@ -59,3 +59,28 @@ func TestSignedSnapshotMaterializesOnlyPolicyAllowedService(t *testing.T) {
 		t.Fatalf("imports=%d err=%v", len(imports.Items), err)
 	}
 }
+
+func TestPendingGrantCarriesExplicitClusterScope(t *testing.T) {
+	now := time.Now().UTC()
+	advertisement := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ServiceAdvertisement", "metadata": map[string]any{"name": "qwen-kubernetes", "namespace": "pilot"}, "spec": map[string]any{"publisherRef": "qwen", "protocol": "kubernetes-api"}}}
+	grant := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "peering.re8ch.com/v1alpha1",
+		"kind":       "ManagedAccessGrant",
+		"metadata":   map[string]any{"name": "qwen-admin", "namespace": "pilot"},
+		"spec": map[string]any{
+			"peerRef": "qwen-re8ch", "advertisementRef": "qwen-kubernetes", "scope": "Cluster",
+			"expiresAt": now.Add(time.Hour).Format(time.RFC3339), "approved": true, "revoked": false,
+			"rules": []any{map[string]any{"apiGroups": []any{"*"}, "resources": []any{"*"}, "verbs": []any{"get", "list", "watch"}}},
+		},
+	}}
+	lists := map[schema.GroupVersionResource]string{grantsGVR: "ManagedAccessGrantList", advertisementsGVR: "ServiceAdvertisementList"}
+	client := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), lists, advertisement, grant)
+	store := &KubernetesSovereignStore{Dynamic: client}
+	grants, err := store.PendingGrants(context.Background(), "pilot", "qwen", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 1 || grants[0].Scope != "Cluster" {
+		t.Fatalf("grants=%+v, want one cluster-scoped grant", grants)
+	}
+}

@@ -452,6 +452,10 @@ func (s *KubernetesSovereignStore) PendingGrants(ctx context.Context, tenant, is
 			continue
 		}
 		peerRef, _, _ := unstructured.NestedString(o.Object, "spec", "peerRef")
+		scope, _, _ := unstructured.NestedString(o.Object, "spec", "scope")
+		if scope == "" {
+			scope = "Namespaced"
+		}
 		namespaces := stringSlice(o.Object, "spec", "namespaces")
 		rawRules, _, _ := unstructured.NestedSlice(o.Object, "spec", "rules")
 		rules := []model.AccessRule{}
@@ -462,7 +466,7 @@ func (s *KubernetesSovereignStore) PendingGrants(ctx context.Context, tenant, is
 			}
 			rules = append(rules, model.AccessRule{APIGroups: stringSlice(m, "apiGroups"), Resources: stringSlice(m, "resources"), Verbs: stringSlice(m, "verbs")})
 		}
-		result = append(result, model.GrantInstruction{Name: o.GetName(), Tenant: tenant, PeerRef: peerRef, AdvertisementRef: adRef, Namespaces: namespaces, Rules: rules, ExpiresAt: expires, Revoked: revoked, ProxyURL: "https://" + adRef + "-" + peerRef + "." + tenant + ".svc:6443"})
+		result = append(result, model.GrantInstruction{Name: o.GetName(), Tenant: tenant, PeerRef: peerRef, AdvertisementRef: adRef, Scope: scope, Namespaces: namespaces, Rules: rules, ExpiresAt: expires, Revoked: revoked, ProxyURL: "https://" + adRef + "-" + peerRef + "." + tenant + ".svc:6443"})
 	}
 	return result, nil
 }

@@ -227,11 +227,15 @@ spec:
           properties:
             spec:
               type: object
-              required: [peerRef, advertisementRef, expiresAt, namespaces, rules]
+              required: [peerRef, advertisementRef, expiresAt, rules]
+              x-kubernetes-validations:
+                - rule: "self.scope == 'Cluster' || (has(self.namespaces) && size(self.namespaces) > 0)"
+                  message: Namespaced grants require at least one namespace
               properties:
                 peerRef: {type: string}
                 advertisementRef: {type: string}
                 expiresAt: {type: string, format: date-time}
+                scope: {type: string, enum: [Namespaced, Cluster], default: Namespaced}
                 namespaces: {type: array, minItems: 1, items: {type: string}}
                 rules:
                   type: array
