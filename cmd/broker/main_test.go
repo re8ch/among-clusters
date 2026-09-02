@@ -52,3 +52,25 @@ func TestSignedEncryptedCredentialIsStoredBehindOpaqueReference(t *testing.T) {
 		t.Fatal("plaintext credential stored")
 	}
 }
+
+func TestKubernetesProxyRequiresMatchingOpaqueReference(t *testing.T) {
+	xkey, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	b := &broker{client: fake.NewSimpleClientset(), namespace: "broker", private: xkey}
+	for _, test := range []struct {
+		name, authorization string
+		want                int
+	}{
+		{name: "missing", want: http.StatusUnauthorized},
+		{name: "wrong grant", authorization: "Bearer credential://among-clusters/pilot/other", want: http.StatusUnauthorized},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/k8s/pilot/admin/api", nil)
+			request.Header.Set("Authorization", test.authorization)
+			response := httptest.NewRecorder()
+			b.proxy(response, request)
+			if response.Code != test.want {
+				t.Fatalf("status=%d, want %d", response.Code, test.want)
+			}
+		})
+	}
+}
