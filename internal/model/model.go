@@ -73,6 +73,7 @@ type GrantInstruction struct {
 	Tenant           string       `json:"tenant"`
 	PeerRef          string       `json:"peerRef"`
 	AdvertisementRef string       `json:"advertisementRef"`
+	Generation       int64        `json:"generation"`
 	Scope            string       `json:"scope"`
 	Namespaces       []string     `json:"namespaces"`
 	Rules            []AccessRule `json:"rules"`

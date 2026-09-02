@@ -62,6 +62,8 @@ TokenRequest, encrypt it to the Broker X25519 public key and submit it directly
 to the Broker. The Hub stores only
 `credential://among-clusters/<tenant>/<grant>`. Headlamp uses the Broker's
 internal Kubernetes proxy; browsers never receive the Kubernetes token.
+The local approval records the grant's Kubernetes generation, so every change
+to scope, rules, target or expiry requires a fresh owner approval.
 
 ## Breaking migration from 0.1
 

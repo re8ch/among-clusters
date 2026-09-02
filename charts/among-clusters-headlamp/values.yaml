@@ -4,4 +4,4 @@ headlamp:
     existingClaim: ""
 installer:
   image: curlimages/curl@sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b
-  bundleChecksum: ebb289e90a6bf9e055cd22a9e17cf51102ee976ae7434b8e3abe534cc6752dcb
+  bundleChecksum: cd07ec6dd2303c7fda971c8685c8a5baf66717f6f627077dfd2cab03e161b134

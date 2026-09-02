@@ -46,6 +46,19 @@ func TestManagedGrantRequiresLocalCustomerApproval(t *testing.T) {
 	}
 }
 
+func TestManagedGrantApprovalIsBoundToGeneration(t *testing.T) {
+	approval := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "among-clusters-approval-admin", Namespace: "among-clusters"}, Data: map[string]string{"grantRef": "admin", "generation": "6", "approved": "true"}}
+	client := fake.NewSimpleClientset(approval)
+	a := &agent{client: client, namespace: "among-clusters"}
+	grant := model.GrantInstruction{Name: "admin", Generation: 7, Scope: "Cluster", ExpiresAt: time.Now().Add(time.Hour)}
+	if err := a.reconcileGrant(context.Background(), grant); err == nil || !strings.Contains(err.Error(), "local customer approval invalid") {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := client.CoreV1().ServiceAccounts("among-clusters").Get(context.Background(), "among-clusters-admin", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatal("service account created from approval for a stale grant generation")
+	}
+}
+
 func TestLoadIdentityPreservesLegacySecretType(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
