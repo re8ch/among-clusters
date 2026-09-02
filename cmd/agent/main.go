@@ -123,6 +123,31 @@ func (a *agent) loadIdentity(ctx context.Context) error {
 		return fmt.Errorf("invalid identity key")
 	}
 	a.key = ed25519.PrivateKey(s.Data["private-key"])
+	if len(s.Data["tls.crt"]) == 0 || len(s.Data["tls.key"]) == 0 || len(s.Data["bundle.pem"]) == 0 || s.Annotations["peering.re8ch.com/bundle-digest"] == "" {
+		material, migrateErr := identity.FromPrivateKey(a.spiffeID(), a.key, time.Now().UTC())
+		if migrateErr != nil {
+			return migrateErr
+		}
+		if s.Data == nil {
+			s.Data = map[string][]byte{}
+		}
+		if s.Annotations == nil {
+			s.Annotations = map[string]string{}
+		}
+		s.Type = corev1.SecretTypeTLS
+		s.Data["tls.crt"] = material.CertificatePEM
+		s.Data["tls.key"] = material.PrivateKeyPEM
+		s.Data["bundle.pem"] = material.BundlePEM
+		s.Data["public-key"] = material.PublicKey
+		s.Annotations["peering.re8ch.com/bundle-digest"] = material.BundleDigest
+		if s.Annotations["peering.re8ch.com/generation"] == "" {
+			s.Annotations["peering.re8ch.com/generation"] = "0"
+		}
+		s, err = a.client.CoreV1().Secrets(a.namespace).Update(ctx, s, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
 	a.sequence, _ = strconv.ParseUint(s.Annotations["peering.re8ch.com/generation"], 10, 64)
 	return nil
 }

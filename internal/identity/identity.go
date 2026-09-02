@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net/url"
 	"time"
@@ -21,10 +22,18 @@ type Material struct {
 }
 
 func Generate(spiffeID string, now time.Time) (Material, error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return Material{}, err
 	}
+	return FromPrivateKey(spiffeID, priv, now)
+}
+
+func FromPrivateKey(spiffeID string, priv ed25519.PrivateKey, now time.Time) (Material, error) {
+	if len(priv) != ed25519.PrivateKeySize {
+		return Material{}, fmt.Errorf("invalid Ed25519 private key")
+	}
+	pub := priv.Public().(ed25519.PublicKey)
 	uri, err := url.Parse(spiffeID)
 	if err != nil {
 		return Material{}, err
