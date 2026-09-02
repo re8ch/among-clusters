@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/re8ch/among-clusters/internal/identity"
 	"github.com/re8ch/among-clusters/internal/model"
 	"github.com/re8ch/among-clusters/internal/protocol"
+	"github.com/re8ch/among-clusters/internal/transport"
+	"github.com/re8ch/among-clusters/internal/transport/quicmtls"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,6 +33,15 @@ type agent struct {
 	key                                                                              ed25519.PrivateKey
 	sequence                                                                         uint64
 	http                                                                             *http.Client
+	confirmations                                                                    []model.BundleConfirmation
+	links                                                                            []linkTarget
+}
+
+type linkTarget struct {
+	LinkRef          string `json:"linkRef"`
+	PeerRef          string `json:"peerRef"`
+	Endpoint         string `json:"endpoint"`
+	ExpectedSPIFFEID string `json:"expectedSPIFFEID"`
 }
 
 func main() {
@@ -41,6 +55,12 @@ func main() {
 		log.Fatal(err)
 	}
 	a := &agent{client: client, clusterID: must("CLUSTER_ID"), tenant: must("TENANT"), trustDomain: must("TRUST_DOMAIN"), endpoint: must("HUB_ENDPOINT"), namespace: env("POD_NAMESPACE", "among-clusters"), secretName: env("IDENTITY_SECRET", "among-clusters-agent-identity"), gatewayEndpoint: os.Getenv("GATEWAY_ENDPOINT"), http: &http.Client{Timeout: 10 * time.Second}}
+	if err = json.Unmarshal([]byte(env("PEER_CONFIRMATIONS", "[]")), &a.confirmations); err != nil {
+		log.Fatalf("PEER_CONFIRMATIONS: %v", err)
+	}
+	if err = json.Unmarshal([]byte(env("LINK_OBSERVATIONS", "[]")), &a.links); err != nil {
+		log.Fatalf("LINK_OBSERVATIONS: %v", err)
+	}
 	if err = a.loadIdentity(ctx); err != nil {
 		log.Fatal(err)
 	}
@@ -54,6 +74,16 @@ func main() {
 	for {
 		if err = a.heartbeat(ctx); err != nil {
 			log.Printf("heartbeat: %v", err)
+		}
+		for _, confirmation := range a.confirmations {
+			if err = a.sendControl(ctx, "peer.bundle.confirm", confirmation); err != nil {
+				log.Printf("confirm %s: %v", confirmation.PeerRef, err)
+			}
+		}
+		for _, target := range a.links {
+			if err = a.observeLink(ctx, target); err != nil {
+				log.Printf("observe %s: %v", target.LinkRef, err)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -138,11 +168,15 @@ func (a *agent) heartbeat(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(map[string]any{"services": len(services.Items), "observedAt": time.Now().UTC()})
+	return a.sendControl(ctx, "identity.heartbeat", map[string]any{"services": len(services.Items), "observedAt": time.Now().UTC()})
+}
+
+func (a *agent) sendControl(ctx context.Context, messageType string, payloadValue any) error {
+	payload, _ := json.Marshal(payloadValue)
 	a.sequence++
 	now := time.Now().UTC()
-	message := model.ControlMessage{Issuer: a.spiffeID(), Audience: "hub", Generation: a.sequence, IssuedAt: now, ExpiresAt: now.Add(time.Minute), Nonce: fmt.Sprintf("%s-%d", a.clusterID, a.sequence), Type: "identity.heartbeat", Payload: payload}
-	if err = protocol.Sign(&message, a.key); err != nil {
+	message := model.ControlMessage{Issuer: a.spiffeID(), Audience: "hub", Generation: a.sequence, IssuedAt: now, ExpiresAt: now.Add(time.Minute), Nonce: fmt.Sprintf("%s-%d", a.clusterID, a.sequence), Type: messageType, Payload: payload}
+	if err := protocol.Sign(&message, a.key); err != nil {
 		return err
 	}
 	body, _ := json.Marshal(message)
@@ -166,4 +200,60 @@ func (a *agent) heartbeat(ctx context.Context) error {
 	secret.Annotations["peering.re8ch.com/generation"] = strconv.FormatUint(a.sequence, 10)
 	_, err = a.client.CoreV1().Secrets(a.namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	return err
+}
+
+func (a *agent) observeLink(ctx context.Context, target linkTarget) error {
+	observation := model.LinkObservation{LinkRef: target.LinkRef, PeerRef: target.PeerRef, LastHandshakeAt: time.Now().UTC()}
+	start := time.Now()
+	driver, err := a.driver(target.ExpectedSPIFFEID)
+	if err == nil {
+		var result transport.Observation
+		result, err = driver.Probe(ctx, transport.Peer{ID: target.PeerRef, Endpoints: []string{target.Endpoint}})
+		observation.Ready = result.Ready
+		observation.LatencyMillis = result.Latency.Milliseconds()
+		observation.LastHandshakeAt = result.ObservedAt.UTC()
+	}
+	if err != nil {
+		observation.Ready = false
+		observation.Reason = "TransportError"
+		observation.LatencyMillis = time.Since(start).Milliseconds()
+	}
+	return a.sendControl(ctx, "link.observe", observation)
+}
+
+func (a *agent) driver(expectedSPIFFEID string) (*quicmtls.Driver, error) {
+	secret, err := a.client.CoreV1().Secrets(a.namespace).Get(context.Background(), a.secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	certificate, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
+	if err != nil {
+		return nil, err
+	}
+	bundle, err := os.ReadFile(env("PEER_BUNDLE_FILE", "/peer-bundles/ca.crt"))
+	if err != nil {
+		return nil, err
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(bundle) {
+		return nil, fmt.Errorf("peer bundle is invalid")
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13, NextProtos: []string{"among-clusters/1"}, InsecureSkipVerify: true} //nolint:gosec -- URI SAN and private root are verified below.
+	config.VerifyConnection = func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 {
+			return fmt.Errorf("peer certificate missing")
+		}
+		intermediates := x509.NewCertPool()
+		for _, certificate := range state.PeerCertificates[1:] {
+			intermediates.AddCert(certificate)
+		}
+		if _, verifyErr := state.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); verifyErr != nil {
+			return verifyErr
+		}
+		if len(state.PeerCertificates[0].URIs) != 1 || strings.TrimSuffix(state.PeerCertificates[0].URIs[0].String(), "/") != strings.TrimSuffix(expectedSPIFFEID, "/") {
+			return fmt.Errorf("unexpected peer SPIFFE identity")
+		}
+		return nil
+	}
+	return quicmtls.New(config), nil
 }

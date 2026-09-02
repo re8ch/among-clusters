@@ -30,10 +30,16 @@ spec:
             - name: INVITATION_ID
               valueFrom: {secretKeyRef: {name: "{{ .Values.invitation.existingSecret }}", key: "{{ .Values.invitation.idKey }}", optional: true}}
             - {name: GATEWAY_ENDPOINT, value: "{{ .Values.gateway.listener.publicEndpoint }}"}
+            - {name: PEER_CONFIRMATIONS, value: {{ .Values.peerConfirmations | toJson | quote }}}
+            - {name: LINK_OBSERVATIONS, value: {{ .Values.linkObservations | toJson | quote }}}
+            - {name: PEER_BUNDLE_FILE, value: /peer-bundles/ca.crt}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - {name: kubernetes-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+          {{- if .Values.gateway.peerBundleSecret }}
+            - {name: peer-bundles, mountPath: /peer-bundles, readOnly: true}
+          {{- end }}
       volumes:
         - name: kubernetes-api
           projected:
@@ -41,6 +47,10 @@ spec:
               - serviceAccountToken: {path: token, expirationSeconds: 3600, audience: https://kubernetes.default.svc}
               - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
               - downwardAPI: {items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]}
+        {{- if .Values.gateway.peerBundleSecret }}
+        - name: peer-bundles
+          secret: {secretName: "{{ .Values.gateway.peerBundleSecret }}"}
+        {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -61,7 +71,13 @@ spec:
           env:
             - {name: LISTEN_ADDRESS, value: ":{{ .Values.gateway.listener.port }}"}
             - {name: LISTENER_ENABLED, value: {{ .Values.gateway.listener.enabled | quote }}}
-          ports: [{name: gateway, containerPort: {{ .Values.gateway.listener.port }}, protocol: UDP}]
+          ports:
+            - name: gateway
+              containerPort: {{ .Values.gateway.listener.port }}
+              protocol: UDP
+              {{- if gt (int .Values.gateway.listener.hostPort) 0 }}
+              hostPort: {{ .Values.gateway.listener.hostPort }}
+              {{- end }}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

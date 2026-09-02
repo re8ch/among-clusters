@@ -146,6 +146,17 @@ func (s *SovereignServer) controlMessage(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
+	if message.Type == "link.observe" {
+		var observation model.LinkObservation
+		if json.Unmarshal(message.Payload, &observation) != nil || observation.LinkRef == "" || observation.PeerRef == "" {
+			http.Error(w, "invalid link observation", 400)
+			return
+		}
+		if err = s.Store.ObserveLink(r.Context(), tenant, id, observation); err != nil {
+			http.Error(w, err.Error(), 403)
+			return
+		}
+	}
 	if err = s.Store.RecordGeneration(r.Context(), tenant, id, message.Generation, message.Nonce); err != nil {
 		http.Error(w, "replay", 409)
 		return

@@ -10,6 +10,8 @@ invitation:
   existingSecret: among-clusters-invitation
   idKey: invitation-id
   tokenKey: token
+peerConfirmations: []
+linkObservations: []
 gateway:
   # Existing Secret populated from mutually confirmed peer bundles. It must
   # contain ca.crt when the QUIC listener is enabled.
@@ -18,6 +20,7 @@ gateway:
     enabled: false
     port: 8443
     publicEndpoint: ""
+    hostPort: 0
   service:
     type: ClusterIP
 advertisements: []

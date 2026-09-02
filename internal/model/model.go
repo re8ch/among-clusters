@@ -47,6 +47,15 @@ type BundleConfirmation struct {
 	BundleDigest string `json:"bundleDigest"`
 }
 
+type LinkObservation struct {
+	LinkRef         string    `json:"linkRef"`
+	PeerRef         string    `json:"peerRef"`
+	Ready           bool      `json:"ready"`
+	LatencyMillis   int64     `json:"latencyMillis,omitempty"`
+	Reason          string    `json:"reason,omitempty"`
+	LastHandshakeAt time.Time `json:"lastHandshakeAt,omitempty"`
+}
+
 type Counts struct {
 	NodesReady  int `json:"nodesReady"`
 	NodesTotal  int `json:"nodesTotal"`
