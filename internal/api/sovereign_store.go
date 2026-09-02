@@ -217,6 +217,9 @@ func (s *KubernetesSovereignStore) RecordGeneration(ctx context.Context, tenant,
 	}
 	_ = unstructured.SetNestedField(obj.Object, int64(g), "status", "lastGeneration")
 	_ = unstructured.SetNestedField(obj.Object, nonce, "status", "lastNonce")
+	_ = unstructured.SetNestedField(obj.Object, "Ready", "status", "state")
+	_ = unstructured.SetNestedField(obj.Object, time.Now().UTC().Format(time.RFC3339), "status", "lastSeenAt")
+	_ = unstructured.SetNestedField(obj.Object, obj.GetGeneration(), "status", "observedGeneration")
 	_, err = s.Dynamic.Resource(identitiesGVR).Namespace(tenant).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
 	return err
 }
