@@ -25,10 +25,15 @@ gateway:
     hostPort: 0
   service:
     type: ClusterIP
+  exports: []
+  imports: []
 advertisements: []
 managedAccess:
   enabled: false
   serviceAccountName: among-clusters-managed-access
+  brokerEndpoint: ""
+  tlsServerName: kubernetes.default.svc
+  approval: {create: false, grantRef: ""}
 hostAliases: []
 networkPolicy:
   enabled: true

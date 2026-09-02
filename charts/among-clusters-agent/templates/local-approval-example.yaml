@@ -1,0 +1,10 @@
+{{- if and .Values.managedAccess.enabled .Values.managedAccess.approval.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: among-clusters-approval-{{ required "managedAccess.approval.grantRef is required" .Values.managedAccess.approval.grantRef }}
+  labels: {app.kubernetes.io/part-of: among-clusters, peering.re8ch.com/local-approval: "true"}
+data:
+  grantRef: {{ .Values.managedAccess.approval.grantRef | quote }}
+  approved: "true"
+{{- end }}

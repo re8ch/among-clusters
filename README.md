@@ -9,7 +9,7 @@ signed identities, trust bundles, gateway endpoints and explicit service
 advertisements; it does not receive Kubernetes credentials and is not in the
 default application data path.
 
-## v0.2 trust model
+## Trust model
 
 - An owner-side Agent creates and retains cluster identity material locally.
 - Invitations are tenant-bound, short-lived and single-use; the Hub stores only
@@ -42,6 +42,24 @@ Services. The Gateway is a separate pod with no service-account token; its UDP
 listener is off until a public endpoint and a confirmed peer-bundle Secret are
 configured.
 
+## Explicit service and managed access flow
+
+A Service is exported only when it has `peering.re8ch.com/advertise=true` plus
+the `protocol`, `service-class`, `policy-ref`, `target-peers` and `ttl-seconds`
+annotations. The Agent sends the full contract in a signed `service.snapshot`;
+the Hub accepts it only when the referenced `PeerPolicy` permits the publisher,
+peer, class, protocol, port and export direction. Removed labels revoke the
+advertisement. The QUIC Gateway routes streams by SPIFFE service identity and
+never exposes Pod or EndpointSlice addresses.
+
+Managed Kubernetes access requires both `spec.approved=true` on the Hub grant
+and an owner-created `among-clusters-approval-<grant>` ConfigMap in the BYOC
+cluster. Only then does the Agent create namespace Roles, issue a short-lived
+TokenRequest, encrypt it to the Broker X25519 public key and submit it directly
+to the Broker. The Hub stores only
+`credential://among-clusters/<tenant>/<grant>`. Headlamp uses the Broker's
+internal Kubernetes proxy; browsers never receive the Kubernetes token.
+
 ## Breaking migration from 0.1
 
 Version 0.2.0 replaces the experimental `Collaboration*` API. Helm never deletes
@@ -59,6 +77,6 @@ certificate/bundle state and failure reasons. It has no mutations, Secret reads,
 credential rendering or remote Kubernetes operations. The native Headlamp
 Artifact Hub metadata lives under `artifacthub/headlamp`.
 
-Tag `v0.2.0` publishes multi-architecture images with SBOM/provenance, all four
+Release tags publish multi-architecture images with SBOM/provenance, all four
 OCI charts, signatures, Artifact Hub repository metadata, and the versioned
 Headlamp archive with its SHA-256 metadata.

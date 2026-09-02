@@ -30,6 +30,14 @@ func (s *SovereignServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/invitations", s.createInvitation)
 	mux.HandleFunc("POST /v1/invitations/{id}/accept", s.acceptInvitation)
 	mux.HandleFunc("POST /v1/peers/{tenant}/{clusterID}/messages", s.controlMessage)
+	mux.HandleFunc("GET /v1/identities/{tenant}/{clusterID}", func(w http.ResponseWriter, r *http.Request) {
+		identity, err := s.Store.Identity(r.Context(), r.PathValue("tenant"), r.PathValue("clusterID"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, 200, identity)
+	})
 	return mux
 }
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -159,10 +167,45 @@ func (s *SovereignServer) controlMessage(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
+	if message.Type == "service.snapshot" {
+		var snapshot model.ServiceSnapshot
+		if json.Unmarshal(message.Payload, &snapshot) != nil {
+			http.Error(w, "invalid service snapshot", 400)
+			return
+		}
+		if err = s.Store.SyncAdvertisements(r.Context(), tenant, id, snapshot.Services, s.now()); err != nil {
+			http.Error(w, err.Error(), 403)
+			return
+		}
+	}
+	var grantSnapshot *model.GrantSnapshot
+	if message.Type == "grant.poll" {
+		grants, grantErr := s.Store.PendingGrants(r.Context(), tenant, id, s.now())
+		if grantErr != nil {
+			http.Error(w, "grant state unavailable", 503)
+			return
+		}
+		grantSnapshot = &model.GrantSnapshot{Grants: grants}
+	}
+	if message.Type == "grant.fulfilled" {
+		var fulfillment model.GrantFulfillment
+		if json.Unmarshal(message.Payload, &fulfillment) != nil || fulfillment.GrantRef == "" || fulfillment.CredentialRef == "" {
+			http.Error(w, "invalid grant fulfillment", 400)
+			return
+		}
+		if err = s.Store.FulfillGrant(r.Context(), tenant, id, fulfillment); err != nil {
+			http.Error(w, err.Error(), 403)
+			return
+		}
+	}
 	if err = s.Store.RecordGeneration(r.Context(), tenant, id, message.Generation, message.Nonce); err != nil {
 		http.Error(w, "replay", 409)
 		return
 	}
 	w.Header().Set("X-AmongClusters-Generation", strconv.FormatUint(message.Generation, 10))
+	if grantSnapshot != nil {
+		writeJSON(w, 200, grantSnapshot)
+		return
+	}
 	w.WriteHeader(202)
 }

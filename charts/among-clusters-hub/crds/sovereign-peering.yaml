@@ -200,6 +200,7 @@ spec:
                 advertisementRef: {type: string}
                 peerRef: {type: string}
                 localServiceName: {type: string}
+                localPort: {type: integer, minimum: 1024, maximum: 65535}
                 suspended: {type: boolean, default: false}
             status:
               type: object
@@ -247,7 +248,7 @@ spec:
             status:
               type: object
               properties:
-                state: {type: string, enum: [Pending, Active, Expired, Revoked, Failed]}
+                state: {type: string, enum: [Pending, AwaitingLocalApproval, Provisioning, Active, Expired, Revoked, Failed]}
                 credentialRef: {type: string}
                 lastRenewedAt: {type: string, format: date-time}
                 reason: {type: string}

@@ -1,0 +1,13 @@
+version: 0.3.0
+name: among-clusters
+displayName: AmongClusters
+createdAt: "2026-09-02T00:00:00Z"
+description: Read-only Headlamp browser for Sovereign Cluster Peering
+license: Apache-2.0
+homeURL: https://github.com/re8ch/among-clusters
+containersImages: []
+annotations:
+  headlamp/plugin/archive-url: https://github.com/re8ch/among-clusters/releases/download/v0.3.0/re8ch-headlamp-among-clusters-0.3.0.tar.gz
+  headlamp/plugin/archive-checksum: sha256:2bf5a9e92dea029545768facf84565ec7b839470b6ab63b3fcb5650a773b4e69
+  headlamp/plugin/version-compat: ">=0.42.0"
+  headlamp/plugin/distro-compat: in-cluster,web,docker-desktop

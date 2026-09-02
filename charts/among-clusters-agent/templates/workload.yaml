@@ -36,6 +36,10 @@ spec:
             - {name: PEER_CONFIRMATIONS, value: {{ .Values.peerConfirmations | toJson | quote }}}
             - {name: LINK_OBSERVATIONS, value: {{ .Values.linkObservations | toJson | quote }}}
             - {name: PEER_BUNDLE_FILE, value: /peer-bundles/ca.crt}
+            - {name: KUBERNETES_TLS_SERVER_NAME, value: {{ .Values.managedAccess.tlsServerName | quote }}}
+            {{- if .Values.managedAccess.enabled }}
+            - {name: BROKER_ENDPOINT, value: {{ required "managedAccess.brokerEndpoint is required" .Values.managedAccess.brokerEndpoint | quote }}}
+            {{- end }}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
@@ -58,7 +62,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata: {name: among-clusters-gateway}
-{{- if and .Values.gateway.listener.enabled (not .Values.gateway.peerBundleSecret) }}{{ fail "gateway.peerBundleSecret is required when gateway.listener.enabled=true" }}{{- end }}
+{{- if and (or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0)) (not .Values.gateway.peerBundleSecret) }}{{ fail "gateway.peerBundleSecret is required for listener or imports" }}{{- end }}
 spec:
   {{- if gt (int .Values.gateway.listener.hostPort) 0 }}
   strategy: {type: Recreate}
@@ -80,6 +84,9 @@ spec:
           env:
             - {name: LISTEN_ADDRESS, value: ":{{ .Values.gateway.listener.port }}"}
             - {name: LISTENER_ENABLED, value: {{ .Values.gateway.listener.enabled | quote }}}
+            - {name: EXPORTS_JSON, value: {{ .Values.gateway.exports | toJson | quote }}}
+            - {name: EXPORTS_FILE, value: /routes/exports.json}
+            - {name: IMPORTS_JSON, value: {{ .Values.gateway.imports | toJson | quote }}}
           ports:
             - name: gateway
               containerPort: {{ .Values.gateway.listener.port }}
@@ -87,17 +94,25 @@ spec:
               {{- if gt (int .Values.gateway.listener.hostPort) 0 }}
               hostPort: {{ .Values.gateway.listener.hostPort }}
               {{- end }}
+            {{- range .Values.gateway.imports }}
+            - name: {{ .name }}
+              containerPort: {{ .port }}
+              protocol: TCP
+            {{- end }}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - {name: identity, mountPath: /identity, readOnly: true}
-          {{- if .Values.gateway.listener.enabled }}
+            - {name: service-routes, mountPath: /routes, readOnly: true}
+          {{- if or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) }}
             - {name: peer-bundles, mountPath: /peer-bundles, readOnly: true}
           {{- end }}
       volumes:
         - name: identity
           secret: {secretName: "{{ .Values.identitySecret }}", optional: true}
-        {{- if .Values.gateway.listener.enabled }}
+        - name: service-routes
+          configMap: {name: among-clusters-service-routes, optional: true}
+        {{- if or .Values.gateway.listener.enabled (gt (len .Values.gateway.imports) 0) }}
         - name: peer-bundles
           secret: {secretName: "{{ .Values.gateway.peerBundleSecret }}"}
         {{- end }}
@@ -108,4 +123,8 @@ metadata: {name: among-clusters-gateway}
 spec:
   type: {{ .Values.gateway.service.type }}
   selector: {app.kubernetes.io/name: among-clusters-gateway}
-  ports: [{name: gateway, port: {{ .Values.gateway.listener.port }}, targetPort: gateway, protocol: UDP}]
+  ports:
+    - {name: gateway, port: {{ .Values.gateway.listener.port }}, targetPort: gateway, protocol: UDP}
+    {{- range .Values.gateway.imports }}
+    - {name: {{ .name }}, port: {{ .port }}, targetPort: {{ .name }}, protocol: TCP}
+    {{- end }}
