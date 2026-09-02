@@ -8,6 +8,10 @@ spec:
     metadata: {labels: {app.kubernetes.io/name: among-clusters-agent}}
     spec:
       serviceAccountName: among-clusters-agent
+      automountServiceAccountToken: false
+      {{- with .Values.hostAliases }}
+      hostAliases: {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: agent
@@ -15,9 +19,68 @@ spec:
           command: [/agent]
           env:
             - {name: CLUSTER_ID, value: "{{ .Values.clusterID }}"}
+            - {name: TENANT, value: "{{ .Values.tenant }}"}
+            - {name: TRUST_DOMAIN, value: "{{ .Values.trustDomain }}"}
             - {name: HUB_ENDPOINT, value: "{{ .Values.hubEndpoint }}"}
             - {name: IDENTITY_SECRET, value: "{{ .Values.identitySecret }}"}
             - name: POD_NAMESPACE
               valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: INVITATION_TOKEN
+              valueFrom: {secretKeyRef: {name: "{{ .Values.invitation.existingSecret }}", key: "{{ .Values.invitation.tokenKey }}", optional: true}}
+            - name: INVITATION_ID
+              valueFrom: {secretKeyRef: {name: "{{ .Values.invitation.existingSecret }}", key: "{{ .Values.invitation.idKey }}", optional: true}}
+            - {name: GATEWAY_ENDPOINT, value: "{{ .Values.gateway.listener.publicEndpoint }}"}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: kubernetes-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+      volumes:
+        - name: kubernetes-api
+          projected:
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3600, audience: https://kubernetes.default.svc}
+              - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
+              - downwardAPI: {items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: among-clusters-gateway}
+{{- if and .Values.gateway.listener.enabled (not .Values.gateway.peerBundleSecret) }}{{ fail "gateway.peerBundleSecret is required when gateway.listener.enabled=true" }}{{- end }}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: among-clusters-gateway}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: among-clusters-gateway}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          command: [/gateway]
+          env:
+            - {name: LISTEN_ADDRESS, value: ":{{ .Values.gateway.listener.port }}"}
+            - {name: LISTENER_ENABLED, value: {{ .Values.gateway.listener.enabled | quote }}}
+          ports: [{name: gateway, containerPort: {{ .Values.gateway.listener.port }}, protocol: UDP}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: identity, mountPath: /identity, readOnly: true}
+          {{- if .Values.gateway.listener.enabled }}
+            - {name: peer-bundles, mountPath: /peer-bundles, readOnly: true}
+          {{- end }}
+      volumes:
+        - name: identity
+          secret: {secretName: "{{ .Values.identitySecret }}", optional: true}
+        {{- if .Values.gateway.listener.enabled }}
+        - name: peer-bundles
+          secret: {secretName: "{{ .Values.gateway.peerBundleSecret }}"}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: among-clusters-gateway}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  selector: {app.kubernetes.io/name: among-clusters-gateway}
+  ports: [{name: gateway, port: {{ .Values.gateway.listener.port }}, targetPort: gateway, protocol: UDP}]

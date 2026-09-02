@@ -1,6 +1,6 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
-metadata: {name: among-clusters-ingest-tls}
+metadata: {name: among-clusters-ingest-tls, namespace: "{{ .Values.gateway.namespace }}"}
 spec:
   secretName: among-clusters-ingest-tls
   dnsNames: ["{{ .Values.hostname }}"]
@@ -15,10 +15,31 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: "{{ .Values.hostname }}"
     external-dns.alpha.kubernetes.io/ttl: "60"
 spec:
-  parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: https}]
+  parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: among-clusters-https}]
   hostnames: ["{{ .Values.hostname }}"]
   rules:
     - matches: [{path: {type: PathPrefix, value: /v1/agents}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]
     - matches: [{path: {type: Exact, value: /healthz}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: among-clusters-ingest
+  labels: {public.re8ch.com/external-dns: enabled, networking.re8ch.com/dns-authority: public-edge}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: "{{ .Values.hostname }}"
+    external-dns.alpha.kubernetes.io/ttl: "60"
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
+    networking.re8ch.com/dns-authority: public-edge
+    networking.re8ch.com/provider: public-edge-manager
+    {{- with .Values.publication.bootstrapTarget }}
+    external-dns.alpha.kubernetes.io/target: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.publication.selectedEdge }}
+    networking.re8ch.com/selected-public-edge: {{ . | quote }}
+    {{- end }}
+spec:
+  ingressClassName: external-dns-only
+  rules: [{host: "{{ .Values.hostname }}"}]

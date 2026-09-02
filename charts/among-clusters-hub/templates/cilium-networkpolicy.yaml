@@ -1,0 +1,18 @@
+{{- if .Values.ciliumPolicy.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: among-clusters-hub-gateway}
+spec:
+  endpointSelector: {matchLabels: {app.kubernetes.io/name: among-clusters-hub}}
+  ingress:
+    - fromEntities: [ingress]
+      toPorts:
+        - ports:
+            - {port: "8080", protocol: TCP}
+  egress:
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}
+            - {port: "6443", protocol: TCP}
+{{- end }}

@@ -1,14 +1,31 @@
+{{- if .Values.networkPolicy.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: among-clusters-agent}
 spec:
   podSelector: {matchLabels: {app.kubernetes.io/name: among-clusters-agent}}
   policyTypes: [Ingress, Egress]
+  {{- if .Values.gateway.listener.enabled }}
+  ingress:
+    - ports: [{protocol: UDP, port: {{ .Values.gateway.listener.port }}}]
+  {{- else }}
   ingress: []
+  {{- end }}
   egress:
+    {{- if .Values.apiServer.cidrs }}
+    - to:
+        {{- range .Values.apiServer.cidrs }}
+        - ipBlock: {cidr: {{ . | quote }}}
+        {{- end }}
+      ports: [{protocol: TCP, port: {{ .Values.apiServer.port }} }]
+    {{- end }}
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports: [{protocol: TCP, port: 443}]
     - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports: [{protocol: UDP, port: 443}, {protocol: UDP, port: {{ .Values.gateway.listener.port }}}]
+    - to:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
       ports: [{protocol: TCP, port: 443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+{{- end }}

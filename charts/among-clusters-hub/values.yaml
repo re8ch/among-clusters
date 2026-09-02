@@ -1,12 +1,22 @@
 image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
+adminTokenSecret: among-clusters-hub-admin
+managedAccess:
+  enabled: false
+migration:
+  replaceCollaborationCRDs: false
 hostname: among-clusters.re8ch.com
 gateway:
   name: re8ch-gateway-canary
   namespace: kube-system
 certificate:
   issuer: re8ch-cloudflare-dns01
+publication:
+  bootstrapTarget: ""
+  selectedEdge: ""
+ciliumPolicy:
+  enabled: false
 resources:
   requests: {cpu: 50m, memory: 64Mi}
   limits: {cpu: 500m, memory: 256Mi}

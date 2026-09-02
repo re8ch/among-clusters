@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["headlamp", "installer"],
+  "properties": {
+    "headlamp": {
+      "type": "object",
+      "required": ["namespace", "pluginsPVC"],
+      "properties": {
+        "namespace": {"type": "string", "minLength": 1},
+        "pluginsPVC": {
+          "type": "object",
+          "required": ["existingClaim"],
+          "properties": {"existingClaim": {"type": "string"}}
+        }
+      }
+    },
+    "installer": {
+      "type": "object",
+      "required": ["image", "bundleChecksum"],
+      "properties": {
+        "image": {"type": "string", "pattern": "^[^@]+@sha256:[a-f0-9]{64}$"},
+        "bundleChecksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  },
+  "additionalProperties": false
+}

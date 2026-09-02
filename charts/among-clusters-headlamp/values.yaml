@@ -1,0 +1,7 @@
+headlamp:
+  namespace: headlamp
+  pluginsPVC:
+    existingClaim: ""
+installer:
+  image: curlimages/curl@sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b
+  bundleChecksum: a155e0e9717b040ac07260ff8ad49ba7223f48ca13806bf3961d20f1f3f283be

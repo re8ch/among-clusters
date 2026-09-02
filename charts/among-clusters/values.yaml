@@ -1,0 +1,6 @@
+hub: {enabled: false}
+agent: {enabled: true}
+headlamp: {enabled: false}
+among-clusters-hub: {}
+among-clusters-agent: {}
+among-clusters-headlamp: {}
