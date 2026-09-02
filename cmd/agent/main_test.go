@@ -17,7 +17,7 @@ import (
 
 func TestAdvertisedServicesRequireExplicitContract(t *testing.T) {
 	client := fake.NewSimpleClientset(
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "tenant", Labels: map[string]string{"peering.re8ch.com/advertise": "true"}, Annotations: map[string]string{"peering.re8ch.com/protocol": "kubernetes-api", "peering.re8ch.com/service-class": "kubernetes.control-plane", "peering.re8ch.com/policy-ref": "managed-api", "peering.re8ch.com/target-peers": "re8ch-qwen", "peering.re8ch.com/ttl-seconds": "120"}}, Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "https", Port: 6443}}}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "tenant", Labels: map[string]string{"peering.re8ch.com/advertise": "true"}, Annotations: map[string]string{"peering.re8ch.com/protocol": "kubernetes-api", "peering.re8ch.com/service-class": "kubernetes.control-plane", "peering.re8ch.com/policy-ref": "managed-api", "peering.re8ch.com/target-peers": "re8ch-qwen", "peering.re8ch.com/ttl-seconds": "120"}}, Spec: corev1.ServiceSpec{ClusterIP: "10.43.0.1", Ports: []corev1.ServicePort{{Name: "https", Port: 6443}}}},
 		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "unapproved", Namespace: "tenant", Labels: map[string]string{"peering.re8ch.com/advertise": "true"}}, Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 80}}}},
 	)
 	a := &agent{client: client}
@@ -34,6 +34,9 @@ func TestAdvertisedServicesRequireExplicitContract(t *testing.T) {
 	}
 	if service.Generation != 1 {
 		t.Fatalf("generation = %d, want normalized generation 1", service.Generation)
+	}
+	if service.GatewayTarget != "10.43.0.1:6443" {
+		t.Fatalf("gateway target = %q, want local ClusterIP without DNS dependency", service.GatewayTarget)
 	}
 }
 
