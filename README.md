@@ -1,28 +1,64 @@
 # AmongClusters
 
-AmongClusters is an independent control plane for recording collaboration between
-autonomous Kubernetes clusters. It is not a Headlamp authentication mechanism and
-does not proxy user access to member clusters.
+**Mesh clusters you don't control.**
 
-Each cluster runs an owner-controlled agent. The agent sends only signed health
-summaries and collaboration events over outbound HTTPS. The Hub stores desired
-relationships and published-service contracts in Kubernetes CRDs and owns only
-their runtime status.
+AmongClusters is a Sovereign Cluster Peering control plane for BYOC services.
+Each Kubernetes cluster remains an independent trust domain: it retains its API
+server, CA, RBAC, scheduler and lifecycle authority. The hosted Hub distributes
+signed identities, trust bundles, gateway endpoints and explicit service
+advertisements; it does not receive Kubernetes credentials and is not in the
+default application data path.
 
-## Trust boundaries
+## v0.2 trust model
 
-- Agent Ed25519 private keys are generated and retained in the owner cluster.
-- The Hub stores public keys only and rejects replayed, stale or invalid requests.
-- No Kubernetes object bodies, Secrets, tenant data or implicit service networking
-  are shared.
-- Human Headlamp OIDC/RBAC access is separate from AmongClusters health.
+- An owner-side Agent creates and retains cluster identity material locally.
+- Invitations are tenant-bound, short-lived and single-use; the Hub stores only
+  their hashes.
+- A Peer becomes eligible only after both owners confirm the other's bundle
+  digest.
+- Gateways use TLS 1.3 mutual authentication over QUIC and accept certificates
+  only from explicitly installed peer bundles with SPIFFE-compatible identities.
+- v1 advertises selected L4/L7 services only. It does not synchronize PodCIDRs,
+  EndpointSlices, Pod addresses or remote API secrets.
+- `ManagedAccessGrant` is an optional, separately gated contract. It is disabled
+  by default and stores only an opaque Credential Broker reference.
 
-## Components
+The API group is `peering.re8ch.com/v1alpha1`. Its namespace-scoped resources are
+`ClusterIdentity`, `Peer`, `AuthenticatedLink`, `PeerPolicy`,
+`ServiceAdvertisement`, `ImportedService` and `ManagedAccessGrant`.
 
-- `cmd/hub`: signed ingest API and CRD reconciliation.
-- `cmd/agent`: local summary collector and signed heartbeat sender.
-- `charts/among-clusters-hub`: Hub CRDs, API, Gateway and policy.
-- `charts/among-clusters-agent`: owner-side agent, minimal RBAC and identity Secret lifecycle.
+## Charts
 
-The Headlamp plugin is a read-only view over the Hub CRDs. It must never probe a
-remote cluster context to derive collaboration health.
+Four OCI charts are released independently under `ghcr.io/re8ch/charts`:
+
+- `among-clusters`: umbrella chart with role switches.
+- `among-clusters-hub`: rendezvous API, controller, CRDs and audit control plane.
+- `among-clusters-agent`: owner-side identity Agent and QUIC Gateway.
+- `among-clusters-headlamp`: installer for the digest-checked read-only plugin.
+
+Images must be configured by immutable `sha256:` digest. The Agent receives a
+projected Kubernetes token and namespace-local read access to explicitly labelled
+Services. The Gateway is a separate pod with no service-account token; its UDP
+listener is off until a public endpoint and a confirmed peer-bundle Secret are
+configured.
+
+## Breaking migration from 0.1
+
+Version 0.2.0 replaces the experimental `Collaboration*` API. Helm never deletes
+the old CRDs automatically. First export and review the old objects, then perform
+the explicit destructive upgrade with `migration.replaceCollaborationCRDs=true`.
+The migration Job emits sanitized object specifications before deleting the four
+legacy CRDs. Secrets and status payloads are not exported. Keep the logs as the
+review artifact before initializing new peering objects.
+
+## Headlamp
+
+`ui/headlamp-plugin` is an independent, read-only Headlamp package. It displays
+trust domains, peers, authenticated links, advertisements, imported services,
+certificate/bundle state and failure reasons. It has no mutations, Secret reads,
+credential rendering or remote Kubernetes operations. The native Headlamp
+Artifact Hub metadata lives under `artifacthub/headlamp`.
+
+Tag `v0.2.0` publishes multi-architecture images with SBOM/provenance, all four
+OCI charts, signatures, Artifact Hub repository metadata, and the versioned
+Headlamp archive with its SHA-256 metadata.

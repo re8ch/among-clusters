@@ -1,3 +1,8 @@
 .DS_Store
 bin/
 coverage.out
+ui/headlamp-plugin/.eslintcache
+ui/headlamp-plugin/dist/
+ui/headlamp-plugin/node_modules/
+ui/headlamp-plugin/*.tar.gz
+charts/among-clusters/charts/

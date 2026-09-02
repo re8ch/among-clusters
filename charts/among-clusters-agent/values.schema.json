@@ -1,50 +1,15 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "required": ["clusterID", "hubEndpoint", "image", "apiServer"],
-  "properties": {
-    "clusterID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-    "hubEndpoint": {"type": "string", "pattern": "^https://"},
-    "image": {
-      "type": "object",
-      "required": ["repository", "digest"],
-      "properties": {
-        "repository": {"type": "string"},
-        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
-      }
-    },
-    "identitySecret": {"type": "string"},
-    "networkPolicy": {
-      "type": "object",
-      "required": ["enabled"],
-      "properties": {"enabled": {"type": "boolean"}},
-      "additionalProperties": false
-    },
-    "hostAliases": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["ip", "hostnames"],
-        "properties": {
-          "ip": {"type": "string"},
-          "hostnames": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9.-]+$"}}
-        },
-        "additionalProperties": false
-      }
-    },
-    "apiServer": {
-      "type": "object",
-      "required": ["cidrs", "port"],
-      "properties": {
-        "cidrs": {"type": "array", "items": {"type": "string", "pattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/(?:[0-9]|[12][0-9]|3[0-2])$"}},
-        "port": {"type": "integer", "minimum": 1, "maximum": 65535}
-      }
-    },
-    "ciliumPolicy": {
-      "type": "object",
-      "required": ["enabled"],
-      "properties": {"enabled": {"type": "boolean"}}
-    }
-  },
-  "additionalProperties": true
+  "$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+  "required":["clusterID","tenant","trustDomain","hubEndpoint","image","gateway","invitation"],
+  "properties":{
+    "clusterID":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]*$"},
+    "tenant":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]*$"},
+    "trustDomain":{"type":"string","pattern":"^[a-z0-9.-]+$"},
+    "hubEndpoint":{"type":"string","pattern":"^https://"},
+    "image":{"type":"object","required":["repository","digest"],"properties":{"repository":{"type":"string"},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}}},
+    "invitation":{"type":"object","required":["existingSecret","idKey","tokenKey"],"properties":{"existingSecret":{"type":"string"},"idKey":{"type":"string"},"tokenKey":{"type":"string"}}},
+    "gateway":{"type":"object","required":["peerBundleSecret","listener","service"],"properties":{"peerBundleSecret":{"type":"string"},"listener":{"type":"object","required":["enabled","port","publicEndpoint"],"properties":{"enabled":{"type":"boolean"},"port":{"type":"integer","minimum":1,"maximum":65535},"publicEndpoint":{"type":"string","pattern":"^$|^quic://"}}},"service":{"type":"object","required":["type"],"properties":{"type":{"type":"string","enum":["ClusterIP","LoadBalancer","NodePort"]}}}}},
+    "networkPolicy":{"type":"object","required":["enabled"],"properties":{"enabled":{"type":"boolean"}}},
+    "managedAccess":{"type":"object","required":["enabled","serviceAccountName"],"properties":{"enabled":{"type":"boolean"},"serviceAccountName":{"type":"string","minLength":1}}}
+  },"additionalProperties":true
 }

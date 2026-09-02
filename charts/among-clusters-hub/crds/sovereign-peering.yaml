@@ -1,0 +1,252 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: clusteridentities.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: clusteridentities, singular: clusteridentity, kind: ClusterIdentity, shortNames: [acid]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      additionalPrinterColumns:
+        - {name: Trust Domain, type: string, jsonPath: .spec.trustDomain}
+        - {name: State, type: string, jsonPath: .status.state}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [clusterID, trustDomain, spiffeID, bundleDigest, publicKey]
+              properties:
+                clusterID: {type: string, minLength: 1, maxLength: 63}
+                trustDomain: {type: string, pattern: '^[a-z0-9.-]+$'}
+                spiffeID: {type: string, pattern: '^spiffe://'}
+                bundleDigest: {type: string, pattern: '^sha256:[a-f0-9]{64}$'}
+                publicKey: {type: string, minLength: 43, maxLength: 128}
+                capabilities: {type: array, uniqueItems: true, items: {type: string}}
+                gatewayEndpoints: {type: array, items: {type: string, pattern: '^quic://'}}
+                suspended: {type: boolean, default: false}
+            status:
+              type: object
+              properties:
+                state: {type: string, enum: [Pending, Ready, Suspended, Revoked]}
+                lastSeenAt: {type: string, format: date-time}
+                observedGeneration: {type: integer, format: int64}
+                lastGeneration: {type: integer, format: int64, minimum: 0}
+                lastNonce: {type: string}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: peers.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: peers, singular: peer, kind: Peer, shortNames: [acpeer]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [localIdentityRef, remoteIdentityRef, invitationRef, transports]
+              properties:
+                localIdentityRef: {type: string}
+                remoteIdentityRef: {type: string}
+                invitationRef: {type: string}
+                transports: {type: array, minItems: 1, uniqueItems: true, items: {type: string, enum: [quic-mtls, wireguard, cilium, istio]}}
+                suspended: {type: boolean, default: false}
+            status:
+              type: object
+              properties:
+                state: {type: string, enum: [PendingConfirmation, Ready, Suspended, Revoked, Failed]}
+                reason: {type: string}
+                observedGeneration: {type: integer, format: int64}
+                localBundleConfirmed: {type: boolean}
+                remoteBundleConfirmed: {type: boolean}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: authenticatedlinks.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: authenticatedlinks, singular: authenticatedlink, kind: AuthenticatedLink, shortNames: [aclink]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [peerRef, transport]
+              properties:
+                peerRef: {type: string}
+                transport: {type: string, enum: [quic-mtls]}
+                localGateway: {type: string}
+                remoteGateway: {type: string}
+                sessionIdentity: {type: string, pattern: '^spiffe://'}
+            status:
+              type: object
+              properties:
+                state: {type: string, enum: [Pending, Connecting, Ready, Blocked, Closed, Failed]}
+                reason: {type: string, enum: ['', NATUnreachable, IdentityMismatch, BundleMismatch, PolicyDenied, TransportError, Revoked]}
+                latencyMillis: {type: integer, format: int64, minimum: 0}
+                lastHandshakeAt: {type: string, format: date-time}
+                observedGeneration: {type: integer, format: int64}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: peerpolicies.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: peerpolicies, singular: peerpolicy, kind: PeerPolicy, shortNames: [acpolicy]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [peerSelector, serviceClasses, protocols]
+              properties:
+                peerSelector: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                serviceClasses: {type: array, uniqueItems: true, items: {type: string}}
+                protocols: {type: array, uniqueItems: true, items: {type: string, enum: [http, https, tcp, tls, kubernetes-api]}}
+                ports: {type: array, items: {type: integer, minimum: 1, maximum: 65535}}
+                directions: {type: array, items: {type: string, enum: [import, export]}}
+                maxAdvertisements: {type: integer, minimum: 0, default: 100}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: serviceadvertisements.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: serviceadvertisements, singular: serviceadvertisement, kind: ServiceAdvertisement, shortNames: [acadv]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [publisherRef, serviceIdentity, serviceClass, protocol, port, targetPeers, ttlSeconds, generation, policyRef]
+              properties:
+                publisherRef: {type: string}
+                serviceIdentity: {type: string, pattern: '^spiffe://'}
+                serviceClass: {type: string}
+                protocol: {type: string, enum: [http, https, tcp, tls, kubernetes-api]}
+                port: {type: integer, minimum: 1, maximum: 65535}
+                localServiceRef:
+                  type: object
+                  required: [name]
+                  properties: {name: {type: string}, namespace: {type: string}, portName: {type: string}}
+                gatewayEndpoints: {type: array, items: {type: string, pattern: '^quic://'}}
+                targetPeers: {type: array, minItems: 1, uniqueItems: true, items: {type: string}}
+                ttlSeconds: {type: integer, minimum: 30, maximum: 86400}
+                generation: {type: integer, format: int64, minimum: 1}
+                policyRef: {type: string}
+                revoked: {type: boolean, default: false}
+              x-kubernetes-validations:
+                - {rule: '!has(self.localServiceRef) || !has(self.localServiceRef.namespace) || self.localServiceRef.namespace == object.metadata.namespace', message: Cross-namespace service references are forbidden}
+            status:
+              type: object
+              properties:
+                state: {type: string, enum: [Pending, Active, Expired, Denied, Revoked]}
+                expiresAt: {type: string, format: date-time}
+                reason: {type: string}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: importedservices.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: importedservices, singular: importedservice, kind: ImportedService, shortNames: [acimport]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [advertisementRef, peerRef, localServiceName]
+              properties:
+                advertisementRef: {type: string}
+                peerRef: {type: string}
+                localServiceName: {type: string}
+                suspended: {type: boolean, default: false}
+            status:
+              type: object
+              properties:
+                state: {type: string, enum: [Pending, Ready, Suspended, Expired, Failed]}
+                serviceRef: {type: string}
+                reason: {type: string}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: managedaccessgrants.peering.re8ch.com}
+spec:
+  group: peering.re8ch.com
+  scope: Namespaced
+  names: {plural: managedaccessgrants, singular: managedaccessgrant, kind: ManagedAccessGrant, shortNames: [acgrant]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [peerRef, advertisementRef, expiresAt, namespaces, rules]
+              properties:
+                peerRef: {type: string}
+                advertisementRef: {type: string}
+                expiresAt: {type: string, format: date-time}
+                namespaces: {type: array, minItems: 1, uniqueItems: true, items: {type: string}}
+                rules:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [apiGroups, resources, verbs]
+                    properties:
+                      apiGroups: {type: array, items: {type: string}}
+                      resources: {type: array, items: {type: string}}
+                      verbs: {type: array, items: {type: string, enum: [get, list, watch, create, update, patch, delete]}}
+                approved: {type: boolean, default: false}
+                revoked: {type: boolean, default: false}
+            status:
+              type: object
+              properties:
+                state: {type: string, enum: [Pending, Active, Expired, Revoked, Failed]}
+                credentialRef: {type: string}
+                lastRenewedAt: {type: string, format: date-time}
+                reason: {type: string}

@@ -1,1 +1,11 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["image","hostname"],"properties":{"image":{"type":"object","required":["repository","digest"],"properties":{"repository":{"type":"string"},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}}},"hostname":{"type":"string","pattern":"^[a-z0-9.-]+$"},"publication":{"type":"object","properties":{"bootstrapTarget":{"type":"string"},"selectedEdge":{"type":"string"}},"additionalProperties":false},"ciliumPolicy":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false}},"additionalProperties":true}
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["image","hostname","adminTokenSecret","managedAccess","migration"],
+  "properties":{
+    "image":{"type":"object","required":["repository","digest"],"properties":{"repository":{"type":"string"},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}}},
+    "hostname":{"type":"string","pattern":"^[a-z0-9.-]+$"},"adminTokenSecret":{"type":"string","minLength":1},
+    "managedAccess":{"type":"object","required":["enabled"],"properties":{"enabled":{"type":"boolean"}}},
+    "migration":{"type":"object","required":["replaceCollaborationCRDs"],"properties":{"replaceCollaborationCRDs":{"type":"boolean"}}},
+    "publication":{"type":"object","properties":{"bootstrapTarget":{"type":"string"},"selectedEdge":{"type":"string"}},"additionalProperties":false},
+    "ciliumPolicy":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false}
+  },"additionalProperties":true
+}

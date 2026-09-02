@@ -1,0 +1,35 @@
+{{- if not .Values.headlamp.pluginsPVC.existingClaim }}{{ fail "headlamp.pluginsPVC.existingClaim is required" }}{{- end }}
+{{- if not .Values.installer.bundleChecksum }}{{ fail "installer.bundleChecksum is required" }}{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: among-clusters-headlamp-plugin}
+binaryData:
+  plugin.tar.gz: {{ .Files.Get "files/plugin.tar.gz" | b64enc | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: among-clusters-headlamp-plugin-{{ .Chart.Version | replace "." "-" }}
+  annotations: {helm.sh/hook: post-install,post-upgrade, helm.sh/hook-delete-policy: before-hook-creation}
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: install
+          image: {{ .Values.installer.image }}
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              echo "{{ .Values.installer.bundleChecksum }}  /bundle/plugin.tar.gz" | sha256sum -c -
+              target=/plugins/among-clusters-{{ .Chart.Version }}
+              stage=${target}.new
+              rm -rf "$stage" && mkdir -p "$stage"
+              tar -xzf /bundle/plugin.tar.gz -C "$stage" --strip-components=1
+              rm -rf "$target" && mv "$stage" "$target"
+          volumeMounts: [{name: bundle, mountPath: /bundle, readOnly: true}, {name: plugins, mountPath: /plugins}]
+      volumes:
+        - {name: bundle, configMap: {name: among-clusters-headlamp-plugin}}
+        - {name: plugins, persistentVolumeClaim: {claimName: {{ .Values.headlamp.pluginsPVC.existingClaim }}}}
