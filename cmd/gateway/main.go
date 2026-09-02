@@ -275,7 +275,8 @@ type readWriteCloser interface {
 func handleExport(stream readWriteCloser, routes map[string]exportRoute, peerIdentities map[string][]string, peerIdentity string) {
 	defer stream.Close()
 	var size uint16
-	if binary.Read(stream, binary.BigEndian, &size) != nil || size == 0 || size > 2048 {
+	if err := binary.Read(stream, binary.BigEndian, &size); err != nil || size == 0 || size > 2048 {
+		log.Printf("export request from %s rejected: invalid identity frame size=%d err=%v", peerIdentity, size, err)
 		return
 	}
 	identity := make([]byte, size)
@@ -294,13 +295,20 @@ func handleExport(stream readWriteCloser, routes map[string]exportRoute, peerIde
 		resolved[route.ServiceIdentity] = route
 	}
 	route, ok := resolved[string(identity)]
-	if !ok || !routeAllowsIdentity(route, peerIdentities, peerIdentity) {
+	if !ok {
+		log.Printf("export request from %s rejected: service identity %s is not advertised", peerIdentity, string(identity))
+		return
+	}
+	if !routeAllowsIdentity(route, peerIdentities, peerIdentity) {
+		log.Printf("export request from %s rejected: service identity %s is outside target peers", peerIdentity, route.ServiceIdentity)
 		return
 	}
 	upstream, err := net.DialTimeout("tcp", route.Target, 5*time.Second)
 	if err != nil {
+		log.Printf("export request from %s for %s failed to connect upstream %s: %v", peerIdentity, route.ServiceIdentity, route.Target, err)
 		return
 	}
+	log.Printf("export request from %s for %s connected upstream %s", peerIdentity, route.ServiceIdentity, route.Target)
 	defer upstream.Close()
 	done := make(chan struct{}, 2)
 	go func() {
@@ -380,12 +388,15 @@ func proxyImport(ctx context.Context, client net.Conn, cert tls.Certificate, roo
 		return
 	}
 	identity := []byte(route.ServiceIdentity)
-	if binary.Write(stream, binary.BigEndian, uint16(len(identity))) != nil {
+	if err = binary.Write(stream, binary.BigEndian, uint16(len(identity))); err != nil {
+		log.Printf("import %s identity frame: %v", route.ServiceIdentity, err)
 		return
 	}
 	if _, err = stream.Write(identity); err != nil {
+		log.Printf("import %s identity write: %v", route.ServiceIdentity, err)
 		return
 	}
+	log.Printf("import %s opened authenticated stream to %s", route.ServiceIdentity, route.ExpectedSPIFFEID)
 	done := make(chan struct{}, 2)
 	go func() { io.Copy(stream, client); stream.Close(); done <- struct{}{} }()
 	go func() { io.Copy(client, stream); done <- struct{}{} }()
