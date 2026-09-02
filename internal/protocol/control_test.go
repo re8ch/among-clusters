@@ -6,9 +6,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"github.com/re8ch/among-clusters/internal/model"
+	"regexp"
 	"testing"
 	"time"
 )
+
+func TestRandomIDIsKubernetesNameSafe(t *testing.T) {
+	id, err := RandomID(12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matched, _ := regexp.MatchString(`^[a-f0-9]{24}$`, id); !matched {
+		t.Fatalf("unsafe ID %q", id)
+	}
+}
 
 func identity(t *testing.T) model.IdentityRegistration {
 	t.Helper()
