@@ -27,6 +27,7 @@ type SovereignStore interface {
 	LastGeneration(context.Context, string, string) (uint64, error)
 	RecordGeneration(context.Context, string, string, uint64, string) error
 	ConfirmPeerBundle(context.Context, string, string, model.BundleConfirmation) error
+	ObserveLink(context.Context, string, string, model.LinkObservation) error
 }
 
 type MemorySovereignStore struct {
@@ -35,10 +36,11 @@ type MemorySovereignStore struct {
 	Identities  map[string]model.IdentityRegistration
 	Generations map[string]uint64
 	Nonces      map[string]map[string]struct{}
+	Links       map[string]model.LinkObservation
 }
 
 func NewMemorySovereignStore() *MemorySovereignStore {
-	return &MemorySovereignStore{Invitations: map[string]model.Invitation{}, Identities: map[string]model.IdentityRegistration{}, Generations: map[string]uint64{}, Nonces: map[string]map[string]struct{}{}}
+	return &MemorySovereignStore{Invitations: map[string]model.Invitation{}, Identities: map[string]model.IdentityRegistration{}, Generations: map[string]uint64{}, Nonces: map[string]map[string]struct{}{}, Links: map[string]model.LinkObservation{}}
 }
 func (s *MemorySovereignStore) CreateInvitation(_ context.Context, v model.Invitation) error {
 	s.mu.Lock()
@@ -114,6 +116,15 @@ func (s *MemorySovereignStore) ConfirmPeerBundle(_ context.Context, _, _ string,
 	if confirmation.PeerRef == "" || confirmation.BundleDigest == "" {
 		return errors.New("invalid bundle confirmation")
 	}
+	return nil
+}
+func (s *MemorySovereignStore) ObserveLink(_ context.Context, tenant, _ string, observation model.LinkObservation) error {
+	if observation.LinkRef == "" || observation.PeerRef == "" {
+		return errors.New("invalid link observation")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Links[tenant+"/"+observation.LinkRef] = observation
 	return nil
 }
 
@@ -215,6 +226,37 @@ func (s *KubernetesSovereignStore) ConfirmPeerBundle(ctx context.Context, tenant
 	}
 	_ = unstructured.SetNestedField(peer.Object, true, "status", field)
 	_, err = s.Dynamic.Resource(peersGVR).Namespace(tenant).UpdateStatus(ctx, peer, metav1.UpdateOptions{})
+	return err
+}
+
+func (s *KubernetesSovereignStore) ObserveLink(ctx context.Context, tenant, issuerID string, observation model.LinkObservation) error {
+	link, err := s.Dynamic.Resource(linksGVR).Namespace(tenant).Get(ctx, observation.LinkRef, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	peerRef, _, _ := unstructured.NestedString(link.Object, "spec", "peerRef")
+	if peerRef != observation.PeerRef {
+		return errors.New("link does not reference peer")
+	}
+	peer, err := s.Dynamic.Resource(peersGVR).Namespace(tenant).Get(ctx, peerRef, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	localRef, _, _ := unstructured.NestedString(peer.Object, "spec", "localIdentityRef")
+	remoteRef, _, _ := unstructured.NestedString(peer.Object, "spec", "remoteIdentityRef")
+	if issuerID != localRef && issuerID != remoteRef {
+		return errors.New("issuer is not a member of the peer")
+	}
+	state := "Disconnected"
+	if observation.Ready {
+		state = "Ready"
+	}
+	_ = unstructured.SetNestedField(link.Object, state, "status", "state")
+	_ = unstructured.SetNestedField(link.Object, observation.Reason, "status", "reason")
+	_ = unstructured.SetNestedField(link.Object, observation.LatencyMillis, "status", "latencyMillis")
+	_ = unstructured.SetNestedField(link.Object, observation.LastHandshakeAt.UTC().Format(time.RFC3339), "status", "lastHandshakeAt")
+	_ = unstructured.SetNestedField(link.Object, time.Now().UTC().Format(time.RFC3339), "status", "lastObservedAt")
+	_, err = s.Dynamic.Resource(linksGVR).Namespace(tenant).UpdateStatus(ctx, link, metav1.UpdateOptions{})
 	return err
 }
 func decodeIdentityKey(v model.IdentityRegistration) ([]byte, error) {

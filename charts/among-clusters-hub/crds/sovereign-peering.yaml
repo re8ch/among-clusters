@@ -100,10 +100,11 @@ spec:
             status:
               type: object
               properties:
-                state: {type: string, enum: [Pending, Connecting, Ready, Blocked, Closed, Failed]}
-                reason: {type: string, enum: ['', NATUnreachable, IdentityMismatch, BundleMismatch, PolicyDenied, TransportError, Revoked]}
+                state: {type: string, enum: [Pending, Connecting, Ready, Disconnected, Blocked, Closed, Failed]}
+                reason: {type: string, enum: ['', NATUnreachable, IdentityMismatch, BundleMismatch, PolicyDenied, TransportError, ObservationStale, Revoked]}
                 latencyMillis: {type: integer, format: int64, minimum: 0}
                 lastHandshakeAt: {type: string, format: date-time}
+                lastObservedAt: {type: string, format: date-time}
                 observedGeneration: {type: integer, format: int64}
 ---
 apiVersion: apiextensions.k8s.io/v1

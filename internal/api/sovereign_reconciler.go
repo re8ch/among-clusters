@@ -106,6 +106,11 @@ func (r *SovereignReconciler) reconcileLinks(ctx context.Context) {
 		state, reason := "Connecting", ""
 		if remote == "" {
 			state, reason = "Blocked", "NATUnreachable"
+		} else if observedValue, found, _ := unstructured.NestedString(o.Object, "status", "lastObservedAt"); found {
+			if observed, parseErr := time.Parse(time.RFC3339, observedValue); parseErr == nil && r.now().Sub(observed) <= 45*time.Second {
+				continue
+			}
+			state, reason = "Disconnected", "ObservationStale"
 		}
 		_ = unstructured.SetNestedField(o.Object, state, "status", "state")
 		_ = unstructured.SetNestedField(o.Object, reason, "status", "reason")
