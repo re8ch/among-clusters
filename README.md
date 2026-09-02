@@ -65,6 +65,11 @@ internal Kubernetes proxy; browsers never receive the Kubernetes token.
 The local approval records the grant's Kubernetes generation, so every change
 to scope, rules, target or expiry requires a fresh owner approval.
 
+The Broker namespace is an operator-owned prerequisite. The Hub chart deploys
+namespaced Broker resources into `managedAccess.broker.namespace`, but never
+creates or owns that Namespace. This prevents Helm rollback or uninstall from
+deleting unrelated credential brokers and their state.
+
 ## Breaking migration from 0.1
 
 Version 0.2.0 replaces the experimental `Collaboration*` API. Helm never deletes
