@@ -32,6 +32,9 @@ func TestAdvertisedServicesRequireExplicitContract(t *testing.T) {
 	if service.Protocol != "kubernetes-api" || service.Port != 6443 || service.PolicyRef != "managed-api" {
 		t.Fatalf("unexpected service: %#v", service)
 	}
+	if service.Generation != 1 {
+		t.Fatalf("generation = %d, want normalized generation 1", service.Generation)
+	}
 }
 
 func TestManagedGrantRequiresLocalCustomerApproval(t *testing.T) {

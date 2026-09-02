@@ -231,7 +231,7 @@ func (a *agent) register(ctx context.Context, id, token string) error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 201 && response.StatusCode != 409 {
-		return fmt.Errorf("hub returned %s", response.Status)
+		return responseStatusError("hub", response)
 	}
 	return nil
 }
@@ -285,7 +285,11 @@ func (a *agent) advertisedServices(ctx context.Context) ([]model.AdvertisedServi
 		if parseErr != nil || ttl < 30 {
 			ttl = 60
 		}
-		result = append(result, model.AdvertisedService{Name: service.Name, Namespace: service.Namespace, ServiceClass: class, Protocol: protocolName, Port: selected.Port, TargetPeers: targets, TTLSeconds: ttl, PolicyRef: policy, Generation: service.Generation})
+		generation := service.Generation
+		if generation < 1 {
+			generation = 1
+		}
+		result = append(result, model.AdvertisedService{Name: service.Name, Namespace: service.Namespace, ServiceClass: class, Protocol: protocolName, Port: selected.Port, TargetPeers: targets, TTLSeconds: ttl, PolicyRef: policy, Generation: generation})
 	}
 	return result, nil
 }
@@ -526,7 +530,7 @@ func (a *agent) sendControlResponse(ctx context.Context, messageType string, pay
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 202 && response.StatusCode != 200 {
-		return nil, fmt.Errorf("hub returned %s", response.Status)
+		return nil, responseStatusError("hub", response)
 	}
 	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if readErr != nil {
@@ -539,6 +543,15 @@ func (a *agent) sendControlResponse(ctx context.Context, messageType string, pay
 	secret.Annotations["peering.re8ch.com/generation"] = strconv.FormatUint(a.sequence, 10)
 	_, err = a.client.CoreV1().Secrets(a.namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	return responseBody, err
+}
+
+func responseStatusError(upstream string, response *http.Response) error {
+	detail, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	message := strings.TrimSpace(string(detail))
+	if message == "" {
+		return fmt.Errorf("%s returned %s", upstream, response.Status)
+	}
+	return fmt.Errorf("%s returned %s: %s", upstream, response.Status, message)
 }
 
 func (a *agent) observeLink(ctx context.Context, target linkTarget) error {
