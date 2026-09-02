@@ -7,6 +7,9 @@ spec:
   ingress:
     - from:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+        {{- if .Values.managedAccess.enabled }}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: {{ .Values.managedAccess.broker.namespace }}}}
+        {{- end }}
       ports: [{protocol: TCP, port: 8080}]
   egress:
     - to:

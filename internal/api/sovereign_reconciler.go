@@ -83,7 +83,13 @@ func (r *SovereignReconciler) reconcileAdvertisements(ctx context.Context) {
 		o := &list.Items[i]
 		revoked, _, _ := unstructured.NestedBool(o.Object, "spec", "revoked")
 		ttl, _, _ := unstructured.NestedInt64(o.Object, "spec", "ttlSeconds")
-		expires := o.GetCreationTimestamp().Add(time.Duration(ttl) * time.Second)
+		publishedAt := o.GetCreationTimestamp().Time
+		if value := o.GetAnnotations()["peering.re8ch.com/last-published-at"]; value != "" {
+			if parsed, parseErr := time.Parse(time.RFC3339, value); parseErr == nil {
+				publishedAt = parsed
+			}
+		}
+		expires := publishedAt.Add(time.Duration(ttl) * time.Second)
 		state := "Active"
 		if revoked {
 			state = "Revoked"
@@ -130,11 +136,15 @@ func (r *SovereignReconciler) reconcileImports(ctx context.Context) {
 		o := &list.Items[i]
 		suspended, _, _ := unstructured.NestedBool(o.Object, "spec", "suspended")
 		name, _, _ := unstructured.NestedString(o.Object, "spec", "localServiceName")
+		localPort, found, _ := unstructured.NestedInt64(o.Object, "spec", "localPort")
+		if !found {
+			localPort = 8443
+		}
 		state := "Ready"
 		if suspended {
 			state = "Suspended"
 		} else {
-			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: o.GetNamespace(), Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters", "peering.re8ch.com/import": o.GetName()}}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app.kubernetes.io/name": "among-clusters-gateway"}, Ports: []corev1.ServicePort{{Name: "service", Port: 8443, TargetPort: intstr.FromString("gateway")}}}}
+			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: o.GetNamespace(), Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters", "peering.re8ch.com/import": o.GetName()}}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app.kubernetes.io/name": "among-clusters-gateway"}, Ports: []corev1.ServicePort{{Name: "service", Port: 6443, TargetPort: intstr.FromInt32(int32(localPort)), Protocol: corev1.ProtocolTCP}}}}
 			if _, err = r.Core.CoreV1().Services(o.GetNamespace()).Create(ctx, svc, metav1.CreateOptions{}); err != nil {
 				if existing, getErr := r.Core.CoreV1().Services(o.GetNamespace()).Get(ctx, name, metav1.GetOptions{}); getErr == nil && existing.Labels["peering.re8ch.com/import"] != o.GetName() {
 					state = "Failed"
@@ -166,7 +176,12 @@ func (r *SovereignReconciler) reconcileGrants(ctx context.Context) {
 		} else if !now.Before(expires) {
 			state = "Expired"
 		} else if approved {
-			state = "Active"
+			credentialRef, _, _ := unstructured.NestedString(o.Object, "status", "credentialRef")
+			if credentialRef == "" {
+				state = "AwaitingLocalApproval"
+			} else {
+				state = "Active"
+			}
 		}
 		_ = unstructured.SetNestedField(o.Object, state, "status", "state")
 		_ = unstructured.SetNestedField(o.Object, reason, "status", "reason")

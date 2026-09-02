@@ -4,20 +4,59 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
-	"github.com/quic-go/quic-go"
+	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/quic-go/quic-go"
 )
 
+type exportRoute struct {
+	ServiceIdentity string `json:"serviceIdentity"`
+	Target          string `json:"target"`
+}
+type importRoute struct {
+	Listen           string `json:"listen"`
+	Endpoint         string `json:"endpoint"`
+	ServiceIdentity  string `json:"serviceIdentity"`
+	ExpectedSPIFFEID string `json:"expectedSPIFFEID"`
+}
+
 func main() {
-	if os.Getenv("LISTENER_ENABLED") != "true" {
-		log.Print("QUIC listener disabled")
-		select {}
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+	cert, roots := credentials()
+	var exports []exportRoute
+	var imports []importRoute
+	if json.Unmarshal([]byte(env("EXPORTS_JSON", "[]")), &exports) != nil || json.Unmarshal([]byte(env("IMPORTS_JSON", "[]")), &imports) != nil {
+		log.Fatal("invalid service routing configuration")
 	}
+	routes := map[string]string{}
+	for _, route := range exports {
+		if route.ServiceIdentity == "" || route.Target == "" {
+			log.Fatal("invalid export route")
+		}
+		routes[route.ServiceIdentity] = route.Target
+	}
+	if os.Getenv("LISTENER_ENABLED") == "true" {
+		go serveQUIC(ctx, cert, roots, routes)
+	}
+	for _, route := range imports {
+		route := route
+		go serveImport(ctx, cert, roots, route)
+	}
+	<-ctx.Done()
+}
+
+func credentials() (tls.Certificate, *x509.CertPool) {
 	var cert tls.Certificate
 	var err error
 	for i := 0; i < 60; i++ {
@@ -32,46 +71,154 @@ func main() {
 	}
 	bundle, err := os.ReadFile(env("PEER_BUNDLE_FILE", "/peer-bundles/ca.crt"))
 	if err != nil {
-		log.Fatalf("trusted peer bundle is required when the listener is enabled: %v", err)
+		log.Fatal(err)
 	}
-	peerRoots := x509.NewCertPool()
-	if !peerRoots.AppendCertsFromPEM(bundle) {
-		log.Fatal("trusted peer bundle does not contain a PEM certificate")
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(bundle) {
+		log.Fatal("invalid peer bundle")
 	}
-	config := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    peerRoots,
-		MinVersion:   tls.VersionTLS13,
-		NextProtos:   []string{"among-clusters/1"},
-		VerifyConnection: func(state tls.ConnectionState) error {
-			if len(state.PeerCertificates) == 0 || len(state.PeerCertificates[0].URIs) != 1 {
-				return errors.New("peer certificate must contain exactly one SPIFFE identity")
-			}
-			identity := state.PeerCertificates[0].URIs[0]
-			if identity.Scheme != "spiffe" || identity.Host == "" {
-				return errors.New("peer certificate identity is not SPIFFE-compatible")
-			}
-			return nil
-		},
+	return cert, roots
+}
+func tlsConfig(cert tls.Certificate, roots *x509.CertPool, expected string, server bool) *tls.Config {
+	c := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, NextProtos: []string{"among-clusters/1"}}
+	if server {
+		c.ClientAuth = tls.RequireAndVerifyClientCert
+		c.ClientCAs = roots
+		return c
 	}
-	listener, err := quic.ListenAddr(env("LISTEN_ADDRESS", ":8443"), config, &quic.Config{KeepAlivePeriod: 15 * time.Second})
+	c.InsecureSkipVerify = true
+	c.VerifyConnection = func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 {
+			return errors.New("peer certificate missing")
+		}
+		inter := x509.NewCertPool()
+		for _, certificate := range state.PeerCertificates[1:] {
+			inter.AddCert(certificate)
+		}
+		if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: inter, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+			return err
+		}
+		if len(state.PeerCertificates[0].URIs) != 1 || strings.TrimSuffix(state.PeerCertificates[0].URIs[0].String(), "/") != strings.TrimSuffix(expected, "/") {
+			return errors.New("peer SPIFFE identity mismatch")
+		}
+		return nil
+	}
+	return c
+}
+func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]string) {
+	listener, err := quic.ListenAddr(env("LISTEN_ADDRESS", ":8443"), tlsConfig(cert, roots, "", true), &quic.Config{KeepAlivePeriod: 15 * time.Second})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer cancel()
 	for {
 		connection, err := listener.Accept(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			log.Printf("accept: %v", err)
-			continue
+			return
 		}
-		go func(c *quic.Conn) { defer c.CloseWithError(0, "closed"); <-ctx.Done() }(connection)
+		go func() {
+			defer connection.CloseWithError(0, "closed")
+			for {
+				stream, err := connection.AcceptStream(ctx)
+				if err != nil {
+					return
+				}
+				go handleExport(stream, routes)
+			}
+		}()
 	}
+}
+
+type readWriteCloser interface {
+	io.Reader
+	io.Writer
+	io.Closer
+}
+
+func handleExport(stream readWriteCloser, routes map[string]string) {
+	defer stream.Close()
+	var size uint16
+	if binary.Read(stream, binary.BigEndian, &size) != nil || size == 0 || size > 2048 {
+		return
+	}
+	identity := make([]byte, size)
+	if _, err := io.ReadFull(stream, identity); err != nil {
+		return
+	}
+	resolved := make(map[string]string, len(routes))
+	for key, value := range routes {
+		resolved[key] = value
+	}
+	for _, route := range readExportFile(env("EXPORTS_FILE", "/routes/exports.json")) {
+		resolved[route.ServiceIdentity] = route.Target
+	}
+	target, ok := resolved[string(identity)]
+	if !ok {
+		return
+	}
+	upstream, err := net.DialTimeout("tcp", target, 5*time.Second)
+	if err != nil {
+		return
+	}
+	defer upstream.Close()
+	done := make(chan struct{}, 2)
+	go func() {
+		io.Copy(upstream, stream)
+		if tcp, ok := upstream.(*net.TCPConn); ok {
+			tcp.CloseWrite()
+		}
+		done <- struct{}{}
+	}()
+	go func() { io.Copy(stream, upstream); stream.Close(); done <- struct{}{} }()
+	<-done
+}
+func readExportFile(path string) []exportRoute {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var routes []exportRoute
+	if json.Unmarshal(data, &routes) != nil {
+		return nil
+	}
+	return routes
+}
+func serveImport(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, route importRoute) {
+	listener, err := net.Listen("tcp", route.Listen)
+	if err != nil {
+		log.Printf("import %s: %v", route.ServiceIdentity, err)
+		return
+	}
+	go func() { <-ctx.Done(); listener.Close() }()
+	for {
+		client, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		go proxyImport(ctx, client, cert, roots, route)
+	}
+}
+func proxyImport(ctx context.Context, client net.Conn, cert tls.Certificate, roots *x509.CertPool, route importRoute) {
+	defer client.Close()
+	connection, err := quic.DialAddr(ctx, route.Endpoint, tlsConfig(cert, roots, route.ExpectedSPIFFEID, false), &quic.Config{HandshakeIdleTimeout: 5 * time.Second})
+	if err != nil {
+		return
+	}
+	defer connection.CloseWithError(0, "closed")
+	stream, err := connection.OpenStreamSync(ctx)
+	if err != nil {
+		return
+	}
+	identity := []byte(route.ServiceIdentity)
+	if binary.Write(stream, binary.BigEndian, uint16(len(identity))) != nil {
+		return
+	}
+	if _, err = stream.Write(identity); err != nil {
+		return
+	}
+	done := make(chan struct{}, 2)
+	go func() { io.Copy(stream, client); stream.Close(); done <- struct{}{} }()
+	go func() { io.Copy(client, stream); done <- struct{}{} }()
+	<-done
 }
 func env(name, fallback string) string {
 	if value := os.Getenv(name); value != "" {
