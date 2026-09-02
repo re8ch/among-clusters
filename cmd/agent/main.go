@@ -326,7 +326,7 @@ func (a *agent) reconcileGrant(ctx context.Context, grant model.GrantInstruction
 	if err != nil {
 		return errors.New("local customer approval required")
 	}
-	if approval.Data["grantRef"] != grant.Name || approval.Data["approved"] != "true" {
+	if approval.Data["grantRef"] != grant.Name || approval.Data["generation"] != strconv.FormatInt(grant.Generation, 10) || approval.Data["approved"] != "true" {
 		return errors.New("local customer approval invalid")
 	}
 	labels := map[string]string{"app.kubernetes.io/managed-by": "among-clusters", "peering.re8ch.com/grant": grant.Name}

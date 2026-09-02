@@ -246,7 +246,7 @@ spec:
                     properties:
                       apiGroups: {type: array, items: {type: string}}
                       resources: {type: array, items: {type: string}}
-                      verbs: {type: array, items: {type: string, enum: [get, list, watch, create, update, patch, delete]}}
+                      verbs: {type: array, items: {type: string, enum: [get, list, watch, create, update, patch, delete, bind, escalate, impersonate, "*"]}}
                 approved: {type: boolean, default: false}
                 revoked: {type: boolean, default: false}
             status:

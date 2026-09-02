@@ -466,7 +466,7 @@ func (s *KubernetesSovereignStore) PendingGrants(ctx context.Context, tenant, is
 			}
 			rules = append(rules, model.AccessRule{APIGroups: stringSlice(m, "apiGroups"), Resources: stringSlice(m, "resources"), Verbs: stringSlice(m, "verbs")})
 		}
-		result = append(result, model.GrantInstruction{Name: o.GetName(), Tenant: tenant, PeerRef: peerRef, AdvertisementRef: adRef, Scope: scope, Namespaces: namespaces, Rules: rules, ExpiresAt: expires, Revoked: revoked, ProxyURL: "https://" + adRef + "-" + peerRef + "." + tenant + ".svc:6443"})
+		result = append(result, model.GrantInstruction{Name: o.GetName(), Tenant: tenant, PeerRef: peerRef, AdvertisementRef: adRef, Generation: o.GetGeneration(), Scope: scope, Namespaces: namespaces, Rules: rules, ExpiresAt: expires, Revoked: revoked, ProxyURL: "https://" + adRef + "-" + peerRef + "." + tenant + ".svc:6443"})
 	}
 	return result, nil
 }

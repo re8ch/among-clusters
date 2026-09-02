@@ -66,7 +66,7 @@ func TestPendingGrantCarriesExplicitClusterScope(t *testing.T) {
 	grant := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "peering.re8ch.com/v1alpha1",
 		"kind":       "ManagedAccessGrant",
-		"metadata":   map[string]any{"name": "qwen-admin", "namespace": "pilot"},
+		"metadata":   map[string]any{"name": "qwen-admin", "namespace": "pilot", "generation": int64(7)},
 		"spec": map[string]any{
 			"peerRef": "qwen-re8ch", "advertisementRef": "qwen-kubernetes", "scope": "Cluster",
 			"expiresAt": now.Add(time.Hour).Format(time.RFC3339), "approved": true, "revoked": false,
@@ -80,7 +80,7 @@ func TestPendingGrantCarriesExplicitClusterScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(grants) != 1 || grants[0].Scope != "Cluster" {
-		t.Fatalf("grants=%+v, want one cluster-scoped grant", grants)
+	if len(grants) != 1 || grants[0].Scope != "Cluster" || grants[0].Generation != 7 {
+		t.Fatalf("grants=%+v, want one generation-bound cluster-scoped grant", grants)
 	}
 }

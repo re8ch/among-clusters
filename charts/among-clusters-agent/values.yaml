@@ -34,7 +34,7 @@ managedAccess:
   serviceAccountName: among-clusters-managed-access
   brokerEndpoint: ""
   tlsServerName: kubernetes.default.svc
-  approval: {create: false, grantRef: ""}
+  approval: {create: false, grantRef: "", generation: 0}
 hostAliases: []
 networkPolicy:
   enabled: true
