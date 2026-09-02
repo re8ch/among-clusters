@@ -6,6 +6,7 @@ image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
 identitySecret: among-clusters-agent-identity
+nodeSelector: {}
 invitation:
   existingSecret: among-clusters-invitation
   idKey: invitation-id
@@ -13,6 +14,7 @@ invitation:
 peerConfirmations: []
 linkObservations: []
 gateway:
+  nodeSelector: {}
   # Existing Secret populated from mutually confirmed peer bundles. It must
   # contain ca.crt when the QUIC listener is enabled.
   peerBundleSecret: ""

@@ -88,24 +88,18 @@ func (s *SovereignServer) acceptInvitation(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid ownership proof", 401)
 		return
 	}
-	inv, err := s.Store.ConsumeInvitation(r.Context(), r.PathValue("id"), protocol.TokenHash(input.Token), input.Identity.Tenant, s.now())
+	inv, err := s.Store.ConsumeInvitation(r.Context(), r.PathValue("id"), protocol.TokenHash(input.Token), input.Identity.Tenant, input.Identity.Capabilities, s.now())
 	if err != nil {
-		http.Error(w, err.Error(), 401)
+		status := http.StatusUnauthorized
+		if err.Error() == "capability not invited" {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	if inv.Tenant != input.Identity.Tenant {
 		http.Error(w, "tenant mismatch", 403)
 		return
-	}
-	allowed := map[string]bool{}
-	for _, capability := range inv.Capabilities {
-		allowed[capability] = true
-	}
-	for _, capability := range input.Identity.Capabilities {
-		if !allowed[capability] {
-			http.Error(w, "capability not invited", 403)
-			return
-		}
 	}
 	if err = s.Store.RegisterIdentity(r.Context(), input.Identity); err != nil {
 		http.Error(w, "identity conflict", 409)

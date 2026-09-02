@@ -3,6 +3,8 @@
   "properties":{
     "image":{"type":"object","required":["repository","digest"],"properties":{"repository":{"type":"string"},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}}},
     "hostname":{"type":"string","pattern":"^[a-z0-9.-]+$"},"adminTokenSecret":{"type":"string","minLength":1},
+    "replicaCount":{"type":"integer","minimum":1},
+    "nodeSelector":{"type":"object","additionalProperties":{"type":"string"}},
     "managedAccess":{"type":"object","required":["enabled"],"properties":{"enabled":{"type":"boolean"}}},
     "migration":{"type":"object","required":["replaceCollaborationCRDs"],"properties":{"replaceCollaborationCRDs":{"type":"boolean"}}},
     "publication":{"type":"object","properties":{"bootstrapTarget":{"type":"string"},"selectedEdge":{"type":"string"}},"additionalProperties":false},

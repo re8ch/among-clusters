@@ -18,7 +18,7 @@ spec:
   parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: among-clusters-https}]
   hostnames: ["{{ .Values.hostname }}"]
   rules:
-    - matches: [{path: {type: PathPrefix, value: /v1/agents}}]
+    - matches: [{path: {type: PathPrefix, value: /v1}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]
     - matches: [{path: {type: Exact, value: /healthz}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]
