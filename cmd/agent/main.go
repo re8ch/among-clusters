@@ -313,6 +313,8 @@ func (a *agent) pollGrants(ctx context.Context) error {
 func (a *agent) reconcileGrant(ctx context.Context, grant model.GrantInstruction) error {
 	name := grantResourceName(grant.Name)
 	if grant.Revoked || !time.Now().Before(grant.ExpiresAt) {
+		_ = a.client.RbacV1().ClusterRoleBindings().Delete(ctx, name, metav1.DeleteOptions{})
+		_ = a.client.RbacV1().ClusterRoles().Delete(ctx, name, metav1.DeleteOptions{})
 		for _, namespace := range grant.Namespaces {
 			_ = a.client.RbacV1().RoleBindings(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 			_ = a.client.RbacV1().Roles(namespace).Delete(ctx, name, metav1.DeleteOptions{})
@@ -332,10 +334,35 @@ func (a *agent) reconcileGrant(ctx context.Context, grant model.GrantInstruction
 	if _, err := a.client.CoreV1().ServiceAccounts(a.namespace).Create(ctx, sa, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
+	rules := make([]rbacv1.PolicyRule, 0, len(grant.Rules))
+	for _, rule := range grant.Rules {
+		rules = append(rules, rbacv1.PolicyRule{APIGroups: rule.APIGroups, Resources: rule.Resources, Verbs: rule.Verbs})
+	}
+	if grant.Scope == "Cluster" {
+		role := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels}, Rules: rules}
+		if _, err := a.client.RbacV1().ClusterRoles().Create(ctx, role, metav1.CreateOptions{}); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return err
+			}
+			current, getErr := a.client.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			current.Rules = rules
+			if _, err = a.client.RbacV1().ClusterRoles().Update(ctx, current, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+		binding := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels}, RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: name}, Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: name, Namespace: a.namespace}}}
+		if _, err := a.client.RbacV1().ClusterRoleBindings().Create(ctx, binding, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+	} else if grant.Scope != "" && grant.Scope != "Namespaced" {
+		return fmt.Errorf("unsupported grant scope %q", grant.Scope)
+	}
 	for _, namespace := range grant.Namespaces {
-		rules := make([]rbacv1.PolicyRule, 0, len(grant.Rules))
-		for _, rule := range grant.Rules {
-			rules = append(rules, rbacv1.PolicyRule{APIGroups: rule.APIGroups, Resources: rule.Resources, Verbs: rule.Verbs})
+		if grant.Scope == "Cluster" {
+			break
 		}
 		role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: labels}, Rules: rules}
 		if _, err := a.client.RbacV1().Roles(namespace).Create(ctx, role, metav1.CreateOptions{}); err != nil {

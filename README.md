@@ -54,7 +54,8 @@ never exposes Pod or EndpointSlice addresses.
 
 Managed Kubernetes access requires both `spec.approved=true` on the Hub grant
 and an owner-created `among-clusters-approval-<grant>` ConfigMap in the BYOC
-cluster. Only then does the Agent create namespace Roles, issue a short-lived
+cluster. Only then does the Agent create namespace Roles, or a rule-defined
+ClusterRole when the grant explicitly sets `scope: Cluster`, issue a short-lived
 TokenRequest, encrypt it to the Broker X25519 public key and submit it directly
 to the Broker. The Hub stores only
 `credential://among-clusters/<tenant>/<grant>`. Headlamp uses the Broker's

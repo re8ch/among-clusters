@@ -64,7 +64,7 @@ jobs:
         run: |
           version=${GITHUB_REF_NAME#v}
           archive="re8ch-headlamp-among-clusters-$version.tar.gz"
-          echo '2bf5a9e92dea029545768facf84565ec7b839470b6ab63b3fcb5650a773b4e69  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
+          echo 'd1c4d4bd5ece6974bb45e2e637650476359783f5856dd1a2adcb071ed2785516  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
           cp charts/among-clusters-headlamp/files/plugin.tar.gz "$archive"
           gh release create "$GITHUB_REF_NAME" \
             "$archive" \

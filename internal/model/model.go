@@ -73,6 +73,7 @@ type GrantInstruction struct {
 	Tenant           string       `json:"tenant"`
 	PeerRef          string       `json:"peerRef"`
 	AdvertisementRef string       `json:"advertisementRef"`
+	Scope            string       `json:"scope"`
 	Namespaces       []string     `json:"namespaces"`
 	Rules            []AccessRule `json:"rules"`
 	ExpiresAt        time.Time    `json:"expiresAt"`
