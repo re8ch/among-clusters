@@ -8,6 +8,9 @@ spec:
     metadata: {labels: {app.kubernetes.io/name: among-clusters-agent}}
     spec:
       serviceAccountName: among-clusters-agent
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       {{- with .Values.hostAliases }}
       hostAliases: {{- toYaml . | nindent 8 }}
@@ -57,12 +60,18 @@ kind: Deployment
 metadata: {name: among-clusters-gateway}
 {{- if and .Values.gateway.listener.enabled (not .Values.gateway.peerBundleSecret) }}{{ fail "gateway.peerBundleSecret is required when gateway.listener.enabled=true" }}{{- end }}
 spec:
+  {{- if gt (int .Values.gateway.listener.hostPort) 0 }}
+  strategy: {type: Recreate}
+  {{- end }}
   replicas: 1
   selector: {matchLabels: {app.kubernetes.io/name: among-clusters-gateway}}
   template:
     metadata: {labels: {app.kubernetes.io/name: among-clusters-gateway}}
     spec:
       automountServiceAccountToken: false
+      {{- with .Values.gateway.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: gateway

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -50,5 +51,20 @@ func TestInvitationRequiresAdmin(t *testing.T) {
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/invitations", bytes.NewBufferString(`{"tenant":"x"}`)))
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("got %d", response.Code)
+	}
+}
+
+func TestCapabilityRejectionDoesNotConsumeInvitation(t *testing.T) {
+	store := NewMemorySovereignStore()
+	now := time.Now().UTC()
+	invitation := model.Invitation{ID: "invite", Tenant: "tenant-a", TokenHash: "hash", Capabilities: []string{"quic-mtls"}, ExpiresAt: now.Add(time.Minute)}
+	if err := store.CreateInvitation(context.Background(), invitation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ConsumeInvitation(context.Background(), "invite", "hash", "tenant-a", []string{"service"}, now); err == nil {
+		t.Fatal("uninvited capability was accepted")
+	}
+	if _, err := store.ConsumeInvitation(context.Background(), "invite", "hash", "tenant-a", []string{"quic-mtls"}, now); err != nil {
+		t.Fatalf("valid retry was consumed by rejected attempt: %v", err)
 	}
 }

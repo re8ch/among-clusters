@@ -2,8 +2,8 @@ apiVersion: v2
 name: among-clusters-hub
 description: Sovereign BYOC peering rendezvous without remote cluster control credentials
 type: application
-version: 0.2.6
-appVersion: 0.2.6
+version: 0.2.7
+appVersion: 0.2.7
 keywords: [byoc, multicluster, spiffe, quic, sovereign-peering]
 annotations:
   artifacthub.io/category: networking

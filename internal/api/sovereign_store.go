@@ -21,7 +21,7 @@ var identitiesGVR = schema.GroupVersionResource{Group: "peering.re8ch.com", Vers
 
 type SovereignStore interface {
 	CreateInvitation(context.Context, model.Invitation) error
-	ConsumeInvitation(context.Context, string, string, string, time.Time) (model.Invitation, error)
+	ConsumeInvitation(context.Context, string, string, string, []string, time.Time) (model.Invitation, error)
 	RegisterIdentity(context.Context, model.IdentityRegistration) error
 	Identity(context.Context, string, string) (model.IdentityRegistration, error)
 	LastGeneration(context.Context, string, string) (uint64, error)
@@ -51,7 +51,7 @@ func (s *MemorySovereignStore) CreateInvitation(_ context.Context, v model.Invit
 	s.Invitations[v.ID] = v
 	return nil
 }
-func (s *MemorySovereignStore) ConsumeInvitation(_ context.Context, id, hash, tenant string, now time.Time) (model.Invitation, error) {
+func (s *MemorySovereignStore) ConsumeInvitation(_ context.Context, id, hash, tenant string, requested []string, now time.Time) (model.Invitation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, ok := s.Invitations[id]
@@ -66,6 +66,9 @@ func (s *MemorySovereignStore) ConsumeInvitation(_ context.Context, id, hash, te
 	}
 	if !now.Before(v.ExpiresAt) {
 		return v, errors.New("invitation expired")
+	}
+	if !capabilitiesAllowed(v.Capabilities, requested) {
+		return v, errors.New("capability not invited")
 	}
 	v.UsedAt = now
 	s.Invitations[id] = v
@@ -139,7 +142,7 @@ func (s *KubernetesSovereignStore) CreateInvitation(ctx context.Context, v model
 	_, err := s.Core.CoreV1().Secrets(v.Tenant).Create(ctx, secret, metav1.CreateOptions{})
 	return err
 }
-func (s *KubernetesSovereignStore) ConsumeInvitation(ctx context.Context, id, hash, tenant string, now time.Time) (model.Invitation, error) {
+func (s *KubernetesSovereignStore) ConsumeInvitation(ctx context.Context, id, hash, tenant string, requested []string, now time.Time) (model.Invitation, error) {
 	name := "among-clusters-invite-" + id
 	secret, err := s.Core.CoreV1().Secrets(tenant).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -157,9 +160,25 @@ func (s *KubernetesSovereignStore) ConsumeInvitation(ctx context.Context, id, ha
 	if !now.Before(expires) {
 		return v, errors.New("invitation expired")
 	}
+	if !capabilitiesAllowed(v.Capabilities, requested) {
+		return v, errors.New("capability not invited")
+	}
 	secret.Annotations["peering.re8ch.com/used-at"] = now.Format(time.RFC3339Nano)
 	_, err = s.Core.CoreV1().Secrets(tenant).Update(ctx, secret, metav1.UpdateOptions{})
 	return v, err
+}
+
+func capabilitiesAllowed(invited, requested []string) bool {
+	allowed := make(map[string]struct{}, len(invited))
+	for _, capability := range invited {
+		allowed[capability] = struct{}{}
+	}
+	for _, capability := range requested {
+		if _, ok := allowed[capability]; !ok {
+			return false
+		}
+	}
+	return true
 }
 func (s *KubernetesSovereignStore) RegisterIdentity(ctx context.Context, v model.IdentityRegistration) error {
 	obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ClusterIdentity", "metadata": map[string]any{"name": v.ClusterID, "namespace": v.Tenant}, "spec": map[string]any{"clusterID": v.ClusterID, "trustDomain": v.TrustDomain, "spiffeID": v.SPIFFEID, "bundleDigest": v.BundleDigest, "publicKey": v.PublicKey, "capabilities": v.Capabilities, "gatewayEndpoints": v.GatewayEndpoints}}}
