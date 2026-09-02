@@ -270,7 +270,7 @@ func (a *agent) publishServices(ctx context.Context) error {
 func (a *agent) writeGatewayRoutes(ctx context.Context, services []model.AdvertisedService) error {
 	routes := []map[string]any{}
 	for _, service := range services {
-		routes = append(routes, map[string]any{"serviceIdentity": fmt.Sprintf("spiffe://%s/ns/%s/service/%s", a.trustDomain, service.Namespace, service.Name), "target": fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Port)})
+		routes = append(routes, map[string]any{"serviceIdentity": fmt.Sprintf("spiffe://%s/ns/%s/service/%s", a.trustDomain, service.Namespace, service.Name), "target": fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Port), "targetPeers": service.TargetPeers})
 	}
 	data, _ := json.Marshal(routes)
 	desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "among-clusters-service-routes", Namespace: a.namespace, Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters"}}, Data: map[string]string{"exports.json": string(data)}}

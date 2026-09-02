@@ -22,7 +22,9 @@ func TestExportTunnelRoutesByServiceIdentity(t *testing.T) {
 	}()
 	client, server := net.Pipe()
 	defer client.Close()
-	go handleExport(server, map[string]string{"spiffe://remote/ns/default/service/api": upstream.Addr().String()})
+	routes := map[string]exportRoute{"spiffe://remote/ns/default/service/api": {ServiceIdentity: "spiffe://remote/ns/default/service/api", Target: upstream.Addr().String(), TargetPeers: []string{"remote-local"}}}
+	identities := map[string][]string{"remote-local": {"spiffe://caller.test/cluster/caller"}}
+	go handleExport(server, routes, identities, "spiffe://caller.test/cluster/caller")
 	identity := []byte("spiffe://remote/ns/default/service/api")
 	if err = binary.Write(client, binary.BigEndian, uint16(len(identity))); err != nil {
 		t.Fatal(err)
@@ -39,5 +41,16 @@ func TestExportTunnelRoutesByServiceIdentity(t *testing.T) {
 	}
 	if string(result) != "ping" {
 		t.Fatalf("got %q", result)
+	}
+}
+
+func TestExportRouteDeniesIdentityOutsideTargetPeer(t *testing.T) {
+	route := exportRoute{ServiceIdentity: "spiffe://remote/ns/default/service/api", TargetPeers: []string{"remote-local"}}
+	identities := map[string][]string{"remote-local": {"spiffe://allowed.test/cluster/allowed"}}
+	if routeAllowsIdentity(route, identities, "spiffe://other.test/cluster/other") {
+		t.Fatal("service route allowed a SPIFFE identity outside its target peer")
+	}
+	if !routeAllowsIdentity(route, identities, "spiffe://allowed.test/cluster/allowed") {
+		t.Fatal("service route denied its explicitly configured target peer")
 	}
 }

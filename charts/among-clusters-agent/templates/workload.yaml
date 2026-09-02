@@ -87,6 +87,7 @@ spec:
             - {name: EXPORTS_JSON, value: {{ .Values.gateway.exports | toJson | quote }}}
             - {name: EXPORTS_FILE, value: /routes/exports.json}
             - {name: IMPORTS_JSON, value: {{ .Values.gateway.imports | toJson | quote }}}
+            - {name: PEER_IDENTITIES_JSON, value: {{ .Values.gateway.peerIdentities | toJson | quote }}}
           ports:
             - name: gateway
               containerPort: {{ .Values.gateway.listener.port }}

@@ -27,6 +27,7 @@ gateway:
     type: ClusterIP
   exports: []
   imports: []
+  peerIdentities: {}
 advertisements: []
 managedAccess:
   enabled: false
