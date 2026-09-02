@@ -45,7 +45,13 @@ jobs:
           mkdir -p dist
           for chart in among-clusters-hub among-clusters-agent among-clusters-headlamp among-clusters; do
             helm package charts/$chart --destination dist
-            helm push "dist/$chart-$version.tgz" oci://ghcr.io/re8ch/charts
+            for attempt in 1 2 3; do
+              if helm push "dist/$chart-$version.tgz" oci://ghcr.io/re8ch/charts; then
+                break
+              fi
+              test "$attempt" -lt 3
+              sleep $((attempt * 5))
+            done
             cosign sign --yes "ghcr.io/re8ch/charts/$chart:$version"
             oras push ghcr.io/re8ch/charts/$chart:artifacthub.io \
               --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
