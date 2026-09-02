@@ -48,15 +48,16 @@ type BundleConfirmation struct {
 }
 
 type AdvertisedService struct {
-	Name         string   `json:"name"`
-	Namespace    string   `json:"namespace"`
-	ServiceClass string   `json:"serviceClass"`
-	Protocol     string   `json:"protocol"`
-	Port         int32    `json:"port"`
-	TargetPeers  []string `json:"targetPeers"`
-	TTLSeconds   int64    `json:"ttlSeconds"`
-	PolicyRef    string   `json:"policyRef"`
-	Generation   int64    `json:"generation"`
+	Name          string   `json:"name"`
+	Namespace     string   `json:"namespace"`
+	ServiceClass  string   `json:"serviceClass"`
+	Protocol      string   `json:"protocol"`
+	Port          int32    `json:"port"`
+	TargetPeers   []string `json:"targetPeers"`
+	TTLSeconds    int64    `json:"ttlSeconds"`
+	PolicyRef     string   `json:"policyRef"`
+	Generation    int64    `json:"generation"`
+	GatewayTarget string   `json:"-"`
 }
 
 type ServiceSnapshot struct {

@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -289,7 +290,11 @@ func (a *agent) advertisedServices(ctx context.Context) ([]model.AdvertisedServi
 		if generation < 1 {
 			generation = 1
 		}
-		result = append(result, model.AdvertisedService{Name: service.Name, Namespace: service.Namespace, ServiceClass: class, Protocol: protocolName, Port: selected.Port, TargetPeers: targets, TTLSeconds: ttl, PolicyRef: policy, Generation: generation})
+		gatewayTarget := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, selected.Port)
+		if service.Spec.ClusterIP != "" && service.Spec.ClusterIP != corev1.ClusterIPNone {
+			gatewayTarget = net.JoinHostPort(service.Spec.ClusterIP, strconv.Itoa(int(selected.Port)))
+		}
+		result = append(result, model.AdvertisedService{Name: service.Name, Namespace: service.Namespace, ServiceClass: class, Protocol: protocolName, Port: selected.Port, TargetPeers: targets, TTLSeconds: ttl, PolicyRef: policy, Generation: generation, GatewayTarget: gatewayTarget})
 	}
 	return result, nil
 }
@@ -307,7 +312,11 @@ func (a *agent) publishServices(ctx context.Context) error {
 func (a *agent) writeGatewayRoutes(ctx context.Context, services []model.AdvertisedService) error {
 	routes := []map[string]any{}
 	for _, service := range services {
-		routes = append(routes, map[string]any{"serviceIdentity": fmt.Sprintf("spiffe://%s/ns/%s/service/%s", a.trustDomain, service.Namespace, service.Name), "target": fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Port), "targetPeers": service.TargetPeers})
+		target := service.GatewayTarget
+		if target == "" {
+			target = fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Port)
+		}
+		routes = append(routes, map[string]any{"serviceIdentity": fmt.Sprintf("spiffe://%s/ns/%s/service/%s", a.trustDomain, service.Namespace, service.Name), "target": target, "targetPeers": service.TargetPeers})
 	}
 	data, _ := json.Marshal(routes)
 	desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "among-clusters-service-routes", Namespace: a.namespace, Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters"}}, Data: map[string]string{"exports.json": string(data)}}
