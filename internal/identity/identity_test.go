@@ -33,4 +33,25 @@ func TestFromPrivateKeyPreservesRootOfTrust(t *testing.T) {
 	if len(certificate.URIs) != 1 || certificate.URIs[0].String() != "spiffe://qwen.byoc/cluster/qwen" {
 		t.Fatalf("unexpected URI SAN: %v", certificate.URIs)
 	}
+	if certificate.IsCA {
+		t.Fatal("workload SVID must not be the trust-domain root")
+	}
+	rootBlock, _ := pem.Decode(material.BundlePEM)
+	root, err := x509.ParseCertificate(rootBlock.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !root.IsCA || root.NotAfter.Before(time.Now().AddDate(9, 0, 0)) {
+		t.Fatalf("root is not a long-lived CA: %+v", root)
+	}
+	rotated, err := Rotate("spiffe://qwen.byoc/cluster/qwen", privateKey, material.BundlePEM, time.Now().Add(23*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotated.BundleDigest != material.BundleDigest || !bytes.Equal(rotated.BundlePEM, material.BundlePEM) {
+		t.Fatal("SVID rotation changed the trust-domain root")
+	}
+	if bytes.Equal(rotated.CertificatePEM, material.CertificatePEM) {
+		t.Fatal("SVID rotation did not issue a new certificate")
+	}
 }

@@ -45,5 +45,5 @@ jobs:
       - name: Verify embedded plugin digest and read-only API surface
         working-directory: .
         run: |
-          echo 'cd07ec6dd2303c7fda971c8685c8a5baf66717f6f627077dfd2cab03e161b134  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
+          echo '5c836c3c8131ac0741a60f855e0aa70aad9856a0df1b98851a03c6dccccd59fd  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
           if grep -R 'create\|update\|delete\|Secret' ui/headlamp-plugin/src; then exit 1; fi

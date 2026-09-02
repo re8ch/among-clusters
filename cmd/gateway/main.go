@@ -82,12 +82,14 @@ func credentials() (tls.Certificate, *x509.CertPool) {
 	return cert, roots
 }
 func tlsConfig(cert tls.Certificate, roots *x509.CertPool, expected string, server bool) *tls.Config {
-	c := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, NextProtos: []string{"among-clusters/1"}}
+	c := &tls.Config{MinVersion: tls.VersionTLS13, NextProtos: []string{"among-clusters/1"}}
 	if server {
+		c.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return currentCertificate(cert) }
 		c.ClientAuth = tls.RequireAndVerifyClientCert
 		c.ClientCAs = roots
 		return c
 	}
+	c.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return currentCertificate(cert) }
 	c.InsecureSkipVerify = true
 	c.VerifyConnection = func(state tls.ConnectionState) error {
 		if len(state.PeerCertificates) == 0 {
@@ -106,6 +108,13 @@ func tlsConfig(cert tls.Certificate, roots *x509.CertPool, expected string, serv
 		return nil
 	}
 	return c
+}
+func currentCertificate(fallback tls.Certificate) (*tls.Certificate, error) {
+	certificate, err := tls.LoadX509KeyPair(env("TLS_CERT_FILE", "/identity/tls.crt"), env("TLS_KEY_FILE", "/identity/tls.key"))
+	if err != nil {
+		return &fallback, nil
+	}
+	return &certificate, nil
 }
 func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, routes map[string]exportRoute, peerIdentities map[string][]string) {
 	listener, err := quic.ListenAddr(env("LISTEN_ADDRESS", ":8443"), tlsConfig(cert, roots, "", true), &quic.Config{KeepAlivePeriod: 15 * time.Second})

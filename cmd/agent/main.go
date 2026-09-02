@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/re8ch/among-clusters/internal/credential"
@@ -77,6 +78,9 @@ func main() {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
+		if err = a.refreshTLSMaterial(ctx); err != nil {
+			log.Printf("SVID rotation: %v", err)
+		}
 		if err = a.heartbeat(ctx); err != nil {
 			log.Printf("heartbeat: %v", err)
 		}
@@ -136,8 +140,30 @@ func (a *agent) loadIdentity(ctx context.Context) error {
 		return fmt.Errorf("invalid identity key")
 	}
 	a.key = ed25519.PrivateKey(s.Data["private-key"])
-	if len(s.Data["tls.crt"]) == 0 || len(s.Data["tls.key"]) == 0 || len(s.Data["bundle.pem"]) == 0 || s.Annotations["peering.re8ch.com/bundle-digest"] == "" {
-		material, migrateErr := identity.FromPrivateKey(a.spiffeID(), a.key, time.Now().UTC())
+	if err = a.refreshTLSSecret(ctx, s, time.Now().UTC()); err != nil {
+		return err
+	}
+	a.sequence, _ = strconv.ParseUint(s.Annotations["peering.re8ch.com/generation"], 10, 64)
+	return nil
+}
+func (a *agent) refreshTLSMaterial(ctx context.Context) error {
+	s, err := a.client.CoreV1().Secrets(a.namespace).Get(ctx, a.secretName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	return a.refreshTLSSecret(ctx, s, time.Now().UTC())
+}
+func (a *agent) refreshTLSSecret(ctx context.Context, s *corev1.Secret, now time.Time) error {
+	needsRoot := len(s.Data["bundle.pem"]) == 0 || certificateExpiresBefore(s.Data["bundle.pem"], now.AddDate(1, 0, 0))
+	needsLeaf := len(s.Data["tls.crt"]) == 0 || len(s.Data["tls.key"]) == 0 || certificateExpiresBefore(s.Data["tls.crt"], now.Add(2*time.Hour))
+	if needsRoot || needsLeaf || s.Annotations["peering.re8ch.com/bundle-digest"] == "" {
+		var material identity.Material
+		var migrateErr error
+		if needsRoot {
+			material, migrateErr = identity.FromPrivateKey(a.spiffeID(), a.key, now)
+		} else {
+			material, migrateErr = identity.Rotate(a.spiffeID(), a.key, s.Data["bundle.pem"], now)
+		}
 		if migrateErr != nil {
 			return migrateErr
 		}
@@ -157,13 +183,20 @@ func (a *agent) loadIdentity(ctx context.Context) error {
 		if s.Annotations["peering.re8ch.com/generation"] == "" {
 			s.Annotations["peering.re8ch.com/generation"] = "0"
 		}
-		s, err = a.client.CoreV1().Secrets(a.namespace).Update(ctx, s, metav1.UpdateOptions{})
+		_, err := a.client.CoreV1().Secrets(a.namespace).Update(ctx, s, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
 	}
-	a.sequence, _ = strconv.ParseUint(s.Annotations["peering.re8ch.com/generation"], 10, 64)
 	return nil
+}
+func certificateExpiresBefore(value []byte, deadline time.Time) bool {
+	block, _ := pem.Decode(value)
+	if block == nil {
+		return true
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	return err != nil || certificate.NotAfter.Before(deadline)
 }
 func (a *agent) registration(ctx context.Context) (model.IdentityRegistration, error) {
 	s, err := a.client.CoreV1().Secrets(a.namespace).Get(ctx, a.secretName, metav1.GetOptions{})
