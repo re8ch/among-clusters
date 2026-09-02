@@ -49,7 +49,7 @@ jobs:
             cosign sign --yes "ghcr.io/re8ch/charts/$chart:$version"
             oras push ghcr.io/re8ch/charts/$chart:artifacthub.io \
               --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-              artifacthub/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+              "artifacthub/helm/$chart/artifacthub-repo.yml":application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
             cosign sign --yes ghcr.io/re8ch/charts/$chart:artifacthub.io
           done
       - name: Verify and publish native Headlamp archive
