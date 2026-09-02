@@ -168,7 +168,7 @@ spec:
                 policyRef: {type: string}
                 revoked: {type: boolean, default: false}
               x-kubernetes-validations:
-                - {rule: '!has(self.localServiceRef) || !has(self.localServiceRef.namespace) || self.localServiceRef.namespace == object.metadata.namespace', message: Cross-namespace service references are forbidden}
+                - {rule: '!has(self.localServiceRef) || !has(self.localServiceRef.namespace)', message: Cross-namespace service references are forbidden; omit namespace for the local namespace}
             status:
               type: object
               properties:
