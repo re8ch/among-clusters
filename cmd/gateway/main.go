@@ -38,31 +38,45 @@ type peerSession struct {
 }
 type sessionRegistry struct {
 	mu       sync.RWMutex
-	sessions map[string]*quic.Conn
+	sessions map[string][]*quic.Conn
 }
 
 const sessionHeartbeatIdentity = "among-clusters.internal/session-heartbeat"
 
 func newSessionRegistry() *sessionRegistry {
-	return &sessionRegistry{sessions: map[string]*quic.Conn{}}
+	return &sessionRegistry{sessions: map[string][]*quic.Conn{}}
 }
 func canonicalIdentity(identity string) string { return strings.TrimSuffix(identity, "/") }
 func (r *sessionRegistry) put(identity string, connection *quic.Conn) {
 	r.mu.Lock()
-	r.sessions[canonicalIdentity(identity)] = connection
+	key := canonicalIdentity(identity)
+	r.sessions[key] = append(r.sessions[key], connection)
 	r.mu.Unlock()
 }
 func (r *sessionRegistry) get(identity string) *quic.Conn {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.sessions[canonicalIdentity(identity)]
+	connections := r.sessions[canonicalIdentity(identity)]
+	if len(connections) > 0 {
+		return connections[0]
+	}
+	return nil
 }
 func (r *sessionRegistry) remove(identity string, connection *quic.Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key := canonicalIdentity(identity)
-	if r.sessions[key] == connection {
+	connections := r.sessions[key]
+	for i, candidate := range connections {
+		if candidate == connection {
+			connections = append(connections[:i], connections[i+1:]...)
+			break
+		}
+	}
+	if len(connections) == 0 {
 		delete(r.sessions, key)
+	} else {
+		r.sessions[key] = connections
 	}
 }
 
