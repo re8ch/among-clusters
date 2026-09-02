@@ -134,7 +134,8 @@ func (a *agent) loadIdentity(ctx context.Context) error {
 		if s.Annotations == nil {
 			s.Annotations = map[string]string{}
 		}
-		s.Type = corev1.SecretTypeTLS
+		// Secret type is immutable. Keep legacy Opaque identity Secrets as-is while
+		// adding the TLS material needed by the sovereign peering gateway.
 		s.Data["tls.crt"] = material.CertificatePEM
 		s.Data["tls.key"] = material.PrivateKeyPEM
 		s.Data["bundle.pem"] = material.BundlePEM
