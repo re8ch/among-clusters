@@ -49,15 +49,19 @@ jobs:
             cosign sign --yes "ghcr.io/re8ch/charts/$chart:$version"
             oras push ghcr.io/re8ch/charts/$chart:artifacthub.io \
               --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-              artifacthub/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+              "artifacthub/helm/$chart/artifacthub-repo.yml":application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
             cosign sign --yes ghcr.io/re8ch/charts/$chart:artifacthub.io
           done
       - name: Verify and publish native Headlamp archive
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          version=${GITHUB_REF_NAME#v}
+          archive="re8ch-headlamp-among-clusters-$version.tar.gz"
           echo 'a155e0e9717b040ac07260ff8ad49ba7223f48ca13806bf3961d20f1f3f283be  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
-          cp charts/among-clusters-headlamp/files/plugin.tar.gz re8ch-headlamp-among-clusters-0.2.0.tar.gz
+          cp charts/among-clusters-headlamp/files/plugin.tar.gz "$archive"
           gh release create "$GITHUB_REF_NAME" \
-            re8ch-headlamp-among-clusters-0.2.0.tar.gz \
+            "$archive" \
             dist/*.tgz \
             --generate-notes \
             --verify-tag
