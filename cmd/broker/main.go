@@ -5,6 +5,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -195,6 +196,12 @@ func (b *broker) proxy(w http.ResponseWriter, r *http.Request) {
 	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/k8s/"), "/", 3)
 	if len(parts) < 2 {
 		http.NotFound(w, r)
+		return
+	}
+	expected := "Bearer credential://among-clusters/" + parts[0] + "/" + parts[1]
+	provided := r.Header.Get("Authorization")
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+		http.Error(w, "opaque credential reference required", http.StatusUnauthorized)
 		return
 	}
 	name := resourceName(parts[0] + "-" + parts[1])
