@@ -66,7 +66,7 @@ func TestExportAcknowledgesSessionHeartbeat(t *testing.T) {
 	}
 }
 
-func TestSessionRegistryUsesCanonicalIdentityAndSafeReplacement(t *testing.T) {
+func TestSessionRegistryKeepsLongLivedSessionWhenProbeCloses(t *testing.T) {
 	registry := newSessionRegistry()
 	first := new(quic.Conn)
 	second := new(quic.Conn)
@@ -75,11 +75,11 @@ func TestSessionRegistryUsesCanonicalIdentityAndSafeReplacement(t *testing.T) {
 		t.Fatal("canonical SPIFFE identity did not resolve the registered session")
 	}
 	registry.put("spiffe://remote.test/cluster/remote", second)
-	registry.remove("spiffe://remote.test/cluster/remote", first)
-	if got := registry.get("spiffe://remote.test/cluster/remote"); got != second {
-		t.Fatal("an old connection removed its replacement session")
-	}
 	registry.remove("spiffe://remote.test/cluster/remote", second)
+	if got := registry.get("spiffe://remote.test/cluster/remote"); got != first {
+		t.Fatal("a closing probe removed the long-lived peer session")
+	}
+	registry.remove("spiffe://remote.test/cluster/remote", first)
 	if got := registry.get("spiffe://remote.test/cluster/remote"); got != nil {
 		t.Fatal("closed current session remained registered")
 	}
