@@ -15,6 +15,8 @@ import (
 	"github.com/re8ch/among-clusters/internal/model"
 	"github.com/re8ch/among-clusters/internal/protocol"
 	"io"
+	authenticationv1 "k8s.io/api/authentication/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -200,7 +202,7 @@ func (b *broker) proxy(w http.ResponseWriter, r *http.Request) {
 	}
 	expected := "Bearer credential://among-clusters/" + parts[0] + "/" + parts[1]
 	provided := r.Header.Get("Authorization")
-	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 && !b.authorizeKubernetesUser(r.Context(), strings.TrimPrefix(provided, "Bearer "), parts[0], parts[1]) {
 		http.Error(w, "opaque credential reference required", http.StatusUnauthorized)
 		return
 	}
@@ -236,6 +238,42 @@ func (b *broker) proxy(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+payload.Token)
 	}
 	proxy.ServeHTTP(w, r)
+}
+
+// authorizeKubernetesUser lets an authenticated local-cluster identity use a
+// managed access grant only when Kubernetes RBAC explicitly allows that exact
+// grant. The caller's token is reviewed locally and is never forwarded to the
+// remote cluster; the broker still injects the short-lived encrypted token.
+func (b *broker) authorizeKubernetesUser(ctx context.Context, token, tenant, grant string) bool {
+	if token == "" {
+		return false
+	}
+	review, err := b.client.AuthenticationV1().TokenReviews().Create(ctx, &authenticationv1.TokenReview{Spec: authenticationv1.TokenReviewSpec{Token: token}}, metav1.CreateOptions{})
+	if err != nil || !review.Status.Authenticated || review.Status.User.Username == "" {
+		return false
+	}
+	sar, err := b.client.AuthorizationV1().SubjectAccessReviews().Create(ctx, &authorizationv1.SubjectAccessReview{Spec: authorizationv1.SubjectAccessReviewSpec{
+		User:   review.Status.User.Username,
+		UID:    review.Status.User.UID,
+		Groups: review.Status.User.Groups,
+		Extra:  tokenReviewExtra(review.Status.User.Extra),
+		ResourceAttributes: &authorizationv1.ResourceAttributes{
+			Namespace: tenant,
+			Verb:      "use",
+			Group:     "peering.re8ch.com",
+			Resource:  "managedaccessgrants",
+			Name:      grant,
+		},
+	}}, metav1.CreateOptions{})
+	return err == nil && sar.Status.Allowed
+}
+
+func tokenReviewExtra(extra map[string]authenticationv1.ExtraValue) map[string]authorizationv1.ExtraValue {
+	result := make(map[string]authorizationv1.ExtraValue, len(extra))
+	for key, values := range extra {
+		result[key] = authorizationv1.ExtraValue(values)
+	}
+	return result
 }
 func resourceName(v string) string {
 	v = strings.ToLower(strings.NewReplacer("_", "-", ".", "-").Replace(v))
