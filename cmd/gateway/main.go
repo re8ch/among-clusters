@@ -245,7 +245,9 @@ func maintainConnectionHeartbeat(ctx context.Context, connection *quic.Conn) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			stream, err := connection.OpenStreamSync(ctx)
+			streamCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			stream, err := connection.OpenStreamSync(streamCtx)
+			cancel()
 			if err != nil {
 				connection.CloseWithError(1, "session heartbeat failed")
 				return
@@ -407,9 +409,13 @@ func proxyImport(ctx context.Context, client net.Conn, cert tls.Certificate, roo
 	if owned {
 		defer connection.CloseWithError(0, "closed")
 	}
-	stream, err := connection.OpenStreamSync(ctx)
+	streamCtx, cancelStream := context.WithTimeout(ctx, 5*time.Second)
+	stream, err := connection.OpenStreamSync(streamCtx)
+	cancelStream()
 	if err != nil {
 		log.Printf("import %s stream: %v", route.ServiceIdentity, err)
+		connection.CloseWithError(1, "import stream unavailable")
+		registry.remove(route.ExpectedSPIFFEID, connection)
 		return
 	}
 	identity := []byte(route.ServiceIdentity)
