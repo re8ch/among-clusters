@@ -101,7 +101,7 @@ spec:
               type: object
               properties:
                 state: {type: string, enum: [Pending, Connecting, Ready, Disconnected, Blocked, Closed, Failed]}
-                reason: {type: string, enum: ['', NATUnreachable, IdentityMismatch, BundleMismatch, PolicyDenied, TransportError, ObservationStale, Revoked]}
+                reason: {type: string, enum: ['', NATUnreachable, IdentityMismatch, BundleMismatch, PolicyDenied, TransportError, PersistentSessionUnavailable, ObservationStale, Revoked]}
                 latencyMillis: {type: integer, format: int64, minimum: 0}
                 lastHandshakeAt: {type: string, format: date-time}
                 lastObservedAt: {type: string, format: date-time}

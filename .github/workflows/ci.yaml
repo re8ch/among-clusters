@@ -29,6 +29,7 @@ jobs:
       - name: Enforce sovereign API and least privilege
         run: |
           test "$(grep -c '^kind: CustomResourceDefinition' charts/among-clusters-hub/crds/sovereign-peering.yaml)" = 7
+          grep -q 'PersistentSessionUnavailable' charts/among-clusters-hub/crds/sovereign-peering.yaml
           if grep -R 'cluster-admin' charts; then exit 1; fi
           if grep -R 'resources:.*secrets.*verbs:.*list' charts/among-clusters-agent; then exit 1; fi
           if grep -R 'RouteAdvertisement\|podCIDR\|remote.*kubeconfig' charts/among-clusters-hub/crds; then exit 1; fi
