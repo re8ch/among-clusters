@@ -25,9 +25,13 @@ spec:
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports: [{protocol: UDP, port: 443}, {protocol: UDP, port: {{ .Values.gateway.listener.port }}}]
-    - to:
-        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
-      ports: [{protocol: TCP, port: 443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    # Some NetworkPolicy implementations evaluate Service traffic before DNAT,
+    # so a namespaceSelector alone does not match the cluster DNS Service IP.
+    # Limit the portable fallback to DNS ports rather than broad egress.
+    - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}}]
+      ports: [{protocol: TCP, port: 443}]
     - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: among-clusters-gateway}}}]
       ports: [{protocol: TCP, port: 8080}]
 ---
@@ -53,6 +57,8 @@ spec:
   egress:
     - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
       ports: [{protocol: UDP, port: {{ .Values.gateway.listener.port }}}, {protocol: TCP, port: 443}, {protocol: TCP, port: 6443}]
+    - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}}]
-      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: TCP, port: 443}]
+      ports: [{protocol: TCP, port: 443}]
 {{- end }}
