@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -62,6 +63,11 @@ func (r *sessionRegistry) get(identity string) *quic.Conn {
 	}
 	return nil
 }
+func (r *sessionRegistry) has(identity string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.sessions[canonicalIdentity(identity)]) > 0
+}
 func (r *sessionRegistry) remove(identity string, connection *quic.Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -99,6 +105,7 @@ func main() {
 		routes[route.ServiceIdentity] = route
 	}
 	registry := newSessionRegistry()
+	go serveSessionReadiness(ctx, registry)
 	if os.Getenv("LISTENER_ENABLED") == "true" {
 		go serveQUIC(ctx, cert, roots, routes, peerIdentities, registry)
 	}
@@ -114,6 +121,24 @@ func main() {
 		go serveImport(ctx, cert, roots, registry, route)
 	}
 	<-ctx.Done()
+}
+
+func serveSessionReadiness(ctx context.Context, registry *sessionRegistry) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, request *http.Request) {
+		identity := request.URL.Query().Get("identity")
+		if identity == "" || !registry.has(identity) {
+			http.Error(w, "persistent session unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	server := &http.Server{Addr: env("READINESS_LISTEN_ADDRESS", ":8080"), Handler: mux, ReadHeaderTimeout: 2 * time.Second}
+	go func() { <-ctx.Done(); _ = server.Close() }()
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("session readiness: %v", err)
+	}
 }
 
 func credentials() (tls.Certificate, *x509.CertPool) {

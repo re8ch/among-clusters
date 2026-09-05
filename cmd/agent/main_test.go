@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestPersistentSessionReadinessRequiresGatewayConfirmation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("identity") != "spiffe://peer.test/cluster/peer" {
+			http.Error(w, "wrong identity", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	t.Setenv("GATEWAY_READINESS_ENDPOINT", server.URL)
+	a := &agent{http: server.Client()}
+	if !a.persistentSessionReady(context.Background(), "spiffe://peer.test/cluster/peer") {
+		t.Fatal("gateway-confirmed persistent session was not ready")
+	}
+}
 
 func TestAdvertisedServicesRequireExplicitContract(t *testing.T) {
 	client := fake.NewSimpleClientset(

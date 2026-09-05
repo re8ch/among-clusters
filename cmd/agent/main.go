@@ -28,6 +28,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -573,6 +574,10 @@ func (a *agent) observeLink(ctx context.Context, target linkTarget) error {
 		observation.Ready = result.Ready
 		observation.LatencyMillis = result.Latency.Milliseconds()
 		observation.LastHandshakeAt = result.ObservedAt.UTC()
+		if observation.Ready && !a.persistentSessionReady(ctx, target.ExpectedSPIFFEID) {
+			observation.Ready = false
+			observation.Reason = "PersistentSessionUnavailable"
+		}
 	}
 	if err != nil {
 		observation.Ready = false
@@ -580,6 +585,20 @@ func (a *agent) observeLink(ctx context.Context, target linkTarget) error {
 		observation.LatencyMillis = time.Since(start).Milliseconds()
 	}
 	return a.sendControl(ctx, "link.observe", observation)
+}
+
+func (a *agent) persistentSessionReady(ctx context.Context, identity string) bool {
+	endpoint := strings.TrimSuffix(env("GATEWAY_READINESS_ENDPOINT", "http://among-clusters-gateway:8080"), "/")
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/readyz?identity="+url.QueryEscape(identity), nil)
+	if err != nil {
+		return false
+	}
+	response, err := a.http.Do(request)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	return response.StatusCode == http.StatusNoContent
 }
 
 func (a *agent) driver(expectedSPIFFEID string) (*quicmtls.Driver, error) {
