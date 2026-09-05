@@ -47,6 +47,66 @@ type BundleConfirmation struct {
 	BundleDigest string `json:"bundleDigest"`
 }
 
+type AdvertisedService struct {
+	Name          string   `json:"name"`
+	Namespace     string   `json:"namespace"`
+	ServiceClass  string   `json:"serviceClass"`
+	Protocol      string   `json:"protocol"`
+	Port          int32    `json:"port"`
+	TargetPeers   []string `json:"targetPeers"`
+	TTLSeconds    int64    `json:"ttlSeconds"`
+	PolicyRef     string   `json:"policyRef"`
+	Generation    int64    `json:"generation"`
+	GatewayTarget string   `json:"-"`
+}
+
+type ServiceSnapshot struct {
+	Services []AdvertisedService `json:"services"`
+}
+
+type AccessRule struct {
+	APIGroups []string `json:"apiGroups"`
+	Resources []string `json:"resources"`
+	Verbs     []string `json:"verbs"`
+}
+type GrantInstruction struct {
+	Name             string       `json:"name"`
+	Tenant           string       `json:"tenant"`
+	PeerRef          string       `json:"peerRef"`
+	AdvertisementRef string       `json:"advertisementRef"`
+	Generation       int64        `json:"generation"`
+	Scope            string       `json:"scope"`
+	Namespaces       []string     `json:"namespaces"`
+	Rules            []AccessRule `json:"rules"`
+	ExpiresAt        time.Time    `json:"expiresAt"`
+	Revoked          bool         `json:"revoked"`
+	ProxyURL         string       `json:"proxyURL"`
+}
+type CredentialPayload struct {
+	Token                string    `json:"token"`
+	CertificateAuthority string    `json:"certificateAuthority"`
+	Server               string    `json:"server"`
+	TLSServerName        string    `json:"tlsServerName"`
+	ExpiresAt            time.Time `json:"expiresAt"`
+}
+type GrantSnapshot struct {
+	Grants []GrantInstruction `json:"grants"`
+}
+type GrantFulfillment struct {
+	GrantRef      string    `json:"grantRef"`
+	CredentialRef string    `json:"credentialRef"`
+	RenewedAt     time.Time `json:"renewedAt"`
+}
+
+type LinkObservation struct {
+	LinkRef         string    `json:"linkRef"`
+	PeerRef         string    `json:"peerRef"`
+	Ready           bool      `json:"ready"`
+	LatencyMillis   int64     `json:"latencyMillis,omitempty"`
+	Reason          string    `json:"reason,omitempty"`
+	LastHandshakeAt time.Time `json:"lastHandshakeAt,omitempty"`
+}
+
 type Counts struct {
 	NodesReady  int `json:"nodesReady"`
 	NodesTotal  int `json:"nodesTotal"`

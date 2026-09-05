@@ -2,12 +2,15 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: {name: among-clusters-hub}
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicaCount }}
   selector: {matchLabels: {app.kubernetes.io/name: among-clusters-hub}}
   template:
     metadata: {labels: {app.kubernetes.io/name: among-clusters-hub}}
     spec:
       serviceAccountName: among-clusters-hub
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: hub

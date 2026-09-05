@@ -6,11 +6,18 @@ image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
 identitySecret: among-clusters-agent-identity
+nodeSelector: {}
 invitation:
   existingSecret: among-clusters-invitation
   idKey: invitation-id
   tokenKey: token
+peerConfirmations: []
+linkObservations: []
 gateway:
+  nodeSelector: {}
+  # Optional provider metadata. The public chart deliberately defines no
+  # provider address or topology; deployment owners supply those values.
+  publicAuthority: {}
   # Existing Secret populated from mutually confirmed peer bundles. It must
   # contain ca.crt when the QUIC listener is enabled.
   peerBundleSecret: ""
@@ -18,12 +25,23 @@ gateway:
     enabled: false
     port: 8443
     publicEndpoint: ""
+    hostPort: 0
   service:
     type: ClusterIP
+  exports: []
+  imports: []
+  # BYOC clusters normally dial the provider-owned public authority and keep
+  # this authenticated QUIC session alive. Either side may open service streams
+  # over it; consumers never need a route to a customer's private Node IP.
+  sessions: []
+  peerIdentities: {}
 advertisements: []
 managedAccess:
   enabled: false
   serviceAccountName: among-clusters-managed-access
+  brokerEndpoint: ""
+  tlsServerName: kubernetes.default.svc
+  approval: {create: false, grantRef: "", generation: 0}
 hostAliases: []
 networkPolicy:
   enabled: true

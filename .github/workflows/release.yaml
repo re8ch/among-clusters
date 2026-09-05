@@ -45,7 +45,13 @@ jobs:
           mkdir -p dist
           for chart in among-clusters-hub among-clusters-agent among-clusters-headlamp among-clusters; do
             helm package charts/$chart --destination dist
-            helm push "dist/$chart-$version.tgz" oci://ghcr.io/re8ch/charts
+            for attempt in 1 2 3; do
+              if helm push "dist/$chart-$version.tgz" oci://ghcr.io/re8ch/charts; then
+                break
+              fi
+              test "$attempt" -lt 3
+              sleep $((attempt * 5))
+            done
             cosign sign --yes "ghcr.io/re8ch/charts/$chart:$version"
             oras push ghcr.io/re8ch/charts/$chart:artifacthub.io \
               --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
@@ -58,7 +64,7 @@ jobs:
         run: |
           version=${GITHUB_REF_NAME#v}
           archive="re8ch-headlamp-among-clusters-$version.tar.gz"
-          echo 'a155e0e9717b040ac07260ff8ad49ba7223f48ca13806bf3961d20f1f3f283be  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
+          echo 'aee9c0fbc3f16d200c866cb8ca41394d5c7070e51b3baa9a27bcb6284dbadcf1  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
           cp charts/among-clusters-headlamp/files/plugin.tar.gz "$archive"
           gh release create "$GITHUB_REF_NAME" \
             "$archive" \

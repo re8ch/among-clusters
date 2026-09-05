@@ -2,8 +2,13 @@ image:
   repository: ghcr.io/re8ch/among-clusters
   digest: ""
 adminTokenSecret: among-clusters-hub-admin
+replicaCount: 2
+nodeSelector: {}
 managedAccess:
   enabled: false
+  broker:
+    hostname: ""
+    namespace: credential-broker
 migration:
   replaceCollaborationCRDs: false
 hostname: among-clusters.re8ch.com

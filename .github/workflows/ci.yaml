@@ -16,8 +16,11 @@ jobs:
           digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           helm lint charts/among-clusters-hub --set image.digest=$digest
           helm template hub charts/among-clusters-hub --set image.digest=$digest >/tmp/hub.yaml
+          helm template hub-managed charts/among-clusters-hub --namespace among-clusters --set image.digest=$digest --set managedAccess.enabled=true >/tmp/hub-managed.yaml
+          ! grep -q '^kind: Namespace$' /tmp/hub-managed.yaml
           helm lint charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest
           helm template agent charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest >/tmp/agent.yaml
+          helm template agent-managed charts/among-clusters-agent --namespace tenant --set clusterID=test --set tenant=test --set trustDomain=test.example --set hubEndpoint=https://hub.example --set image.digest=$digest --set gateway.peerBundleSecret=peer --set managedAccess.enabled=true --set managedAccess.brokerEndpoint=https://hub.example/broker >/tmp/agent-managed.yaml
           helm lint charts/among-clusters-headlamp --set headlamp.pluginsPVC.existingClaim=plugins
           helm template headlamp charts/among-clusters-headlamp --set headlamp.pluginsPVC.existingClaim=plugins >/tmp/headlamp.yaml
           helm dependency build charts/among-clusters
@@ -43,5 +46,5 @@ jobs:
       - name: Verify embedded plugin digest and read-only API surface
         working-directory: .
         run: |
-          echo 'a155e0e9717b040ac07260ff8ad49ba7223f48ca13806bf3961d20f1f3f283be  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
+          echo 'aee9c0fbc3f16d200c866cb8ca41394d5c7070e51b3baa9a27bcb6284dbadcf1  charts/among-clusters-headlamp/files/plugin.tar.gz' | sha256sum -c -
           if grep -R 'create\|update\|delete\|Secret' ui/headlamp-plugin/src; then exit 1; fi

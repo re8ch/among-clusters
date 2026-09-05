@@ -3,7 +3,7 @@ kind: ServiceAccount
 metadata: {name: among-clusters-agent}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata: {name: among-clusters-agent-observer}
 rules:
   - apiGroups: [""]
@@ -11,9 +11,9 @@ rules:
     verbs: [get, list]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata: {name: among-clusters-agent-observer}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: among-clusters-agent-observer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: among-clusters-agent-observer}
 subjects: [{kind: ServiceAccount, name: among-clusters-agent, namespace: "{{ .Release.Namespace }}"}]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -27,11 +27,17 @@ rules:
   - apiGroups: [""]
     resources: [secrets]
     verbs: [create]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [among-clusters-service-routes]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
   {{- if .Values.managedAccess.enabled }}
   - apiGroups: [""]
-    resources: [serviceaccounts/token]
-    resourceNames: ["{{ .Values.managedAccess.serviceAccountName }}"]
-    verbs: [create]
+    resources: [configmaps]
+    verbs: [get]
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -39,3 +45,19 @@ kind: RoleBinding
 metadata: {name: among-clusters-agent-identity}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: among-clusters-agent-identity}
 subjects: [{kind: ServiceAccount, name: among-clusters-agent}]
+{{- if .Values.managedAccess.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: "among-clusters-managed-access-{{ .Values.clusterID }}"}
+rules:
+  - {apiGroups: [""], resources: [serviceaccounts], verbs: [get, create]}
+  - {apiGroups: [""], resources: [serviceaccounts/token], verbs: [create]}
+  - {apiGroups: [rbac.authorization.k8s.io], resources: [roles, rolebindings, clusterroles, clusterrolebindings], verbs: [get, create, update, bind, escalate]}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: "among-clusters-managed-access-{{ .Values.clusterID }}"}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: "among-clusters-managed-access-{{ .Values.clusterID }}"}
+subjects: [{kind: ServiceAccount, name: among-clusters-agent, namespace: "{{ .Release.Namespace }}"}]
+{{- end }}

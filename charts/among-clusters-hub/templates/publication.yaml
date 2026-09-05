@@ -18,7 +18,12 @@ spec:
   parentRefs: [{name: "{{ .Values.gateway.name }}", namespace: "{{ .Values.gateway.namespace }}", sectionName: among-clusters-https}]
   hostnames: ["{{ .Values.hostname }}"]
   rules:
-    - matches: [{path: {type: PathPrefix, value: /v1/agents}}]
+    {{- if .Values.managedAccess.enabled }}
+    - matches: [{path: {type: PathPrefix, value: /broker}}]
+      filters: [{type: URLRewrite, urlRewrite: {path: {type: ReplacePrefixMatch, replacePrefixMatch: /}}}]
+      backendRefs: [{name: among-clusters-credential-broker, namespace: {{ .Values.managedAccess.broker.namespace }}, port: 80}]
+    {{- end }}
+    - matches: [{path: {type: PathPrefix, value: /v1}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]
     - matches: [{path: {type: Exact, value: /healthz}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]

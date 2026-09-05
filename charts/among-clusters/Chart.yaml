@@ -2,10 +2,10 @@ apiVersion: v2
 name: among-clusters
 description: Umbrella chart for AmongClusters Sovereign Cluster Peering
 type: application
-version: 0.2.2
-appVersion: 0.2.2
+version: 0.3.17
+appVersion: 0.3.17
 dependencies:
-  - {name: among-clusters-hub, version: 0.2.2, repository: "file://../among-clusters-hub", condition: hub.enabled}
-  - {name: among-clusters-agent, version: 0.2.2, repository: "file://../among-clusters-agent", condition: agent.enabled}
-  - {name: among-clusters-headlamp, version: 0.2.2, repository: "file://../among-clusters-headlamp", condition: headlamp.enabled}
+  - {name: among-clusters-hub, version: 0.3.17, repository: "file://../among-clusters-hub", condition: hub.enabled}
+  - {name: among-clusters-agent, version: 0.3.17, repository: "file://../among-clusters-agent", condition: agent.enabled}
+  - {name: among-clusters-headlamp, version: 0.3.17, repository: "file://../among-clusters-headlamp", condition: headlamp.enabled}
 annotations: {artifacthub.io/category: networking, artifacthub.io/license: Apache-2.0}
