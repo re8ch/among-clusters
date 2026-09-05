@@ -83,4 +83,7 @@ func TestPendingGrantCarriesExplicitClusterScope(t *testing.T) {
 	if len(grants) != 1 || grants[0].Scope != "Cluster" || grants[0].Generation != 7 {
 		t.Fatalf("grants=%+v, want one generation-bound cluster-scoped grant", grants)
 	}
+	if got, want := grants[0].ProxyURL, "https://qwen-kubernetes-qwen-re8ch.pilot.svc.cluster.local:6443"; got != want {
+		t.Fatalf("proxy URL = %q, want %q", got, want)
+	}
 }
