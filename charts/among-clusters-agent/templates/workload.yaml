@@ -93,10 +93,10 @@ spec:
             - name: gateway
               containerPort: {{ .Values.gateway.listener.port }}
               protocol: UDP
-            - {name: readiness, containerPort: 8080, protocol: TCP}
               {{- if gt (int .Values.gateway.listener.hostPort) 0 }}
               hostPort: {{ .Values.gateway.listener.hostPort }}
               {{- end }}
+            - {name: readiness, containerPort: 8080, protocol: TCP}
             {{- range .Values.gateway.imports }}
             - name: {{ .name }}
               containerPort: {{ .port }}
