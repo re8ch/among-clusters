@@ -74,3 +74,26 @@ func TestKubernetesProxyRequiresMatchingOpaqueReference(t *testing.T) {
 		})
 	}
 }
+
+func TestKubernetesProxyRouteSupportsKubectlOriginRequests(t *testing.T) {
+	for _, test := range []struct {
+		name, path, authorization string
+		wantParts                 []string
+		wantOpaque                bool
+	}{
+		{name: "explicit browser route", path: "/k8s/pilot/admin/apis/apps/v1", authorization: "Bearer local-user", wantParts: []string{"pilot", "admin", "apis/apps/v1"}},
+		{name: "kubectl discovery", path: "/api", authorization: "Bearer credential://among-clusters/pilot/admin", wantParts: []string{"pilot", "admin", "api"}, wantOpaque: true},
+		{name: "kubectl root", path: "/", authorization: "Bearer credential://among-clusters/pilot/admin", wantParts: []string{"pilot", "admin"}, wantOpaque: true},
+		{name: "missing reference", path: "/api", wantOpaque: true},
+		{name: "malformed reference", path: "/api", authorization: "Bearer credential://among-clusters/pilot/admin/extra", wantOpaque: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Header.Set("Authorization", test.authorization)
+			parts, opaque := kubernetesProxyParts(request)
+			if strings.Join(parts, "/") != strings.Join(test.wantParts, "/") || opaque != test.wantOpaque {
+				t.Fatalf("parts=%v opaque=%v, want parts=%v opaque=%v", parts, opaque, test.wantParts, test.wantOpaque)
+			}
+		})
+	}
+}
