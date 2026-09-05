@@ -22,6 +22,10 @@ spec:
     - matches: [{path: {type: PathPrefix, value: /broker}}]
       filters: [{type: URLRewrite, urlRewrite: {path: {type: ReplacePrefixMatch, replacePrefixMatch: /}}}]
       backendRefs: [{name: among-clusters-credential-broker, namespace: {{ .Values.managedAccess.broker.namespace }}, port: 80}]
+    # Native Kubernetes clients discard path prefixes from kubeconfig server
+    # URLs. More-specific /v1 and /healthz rules below continue to target Hub.
+    - matches: [{path: {type: PathPrefix, value: /}}]
+      backendRefs: [{name: among-clusters-credential-broker, namespace: {{ .Values.managedAccess.broker.namespace }}, port: 80}]
     {{- end }}
     - matches: [{path: {type: PathPrefix, value: /v1}}]
       backendRefs: [{name: among-clusters-hub, port: 80}]

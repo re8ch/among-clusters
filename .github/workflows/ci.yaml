@@ -18,6 +18,7 @@ jobs:
           helm template hub charts/among-clusters-hub --set image.digest=$digest >/tmp/hub.yaml
           helm template hub-managed charts/among-clusters-hub --namespace among-clusters --set image.digest=$digest --set managedAccess.enabled=true >/tmp/hub-managed.yaml
           ! grep -q '^kind: Namespace$' /tmp/hub-managed.yaml
+          grep -q 'type: PathPrefix, value: /}' /tmp/hub-managed.yaml
           helm lint charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest
           helm template agent charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest >/tmp/agent.yaml
           helm template agent-listener charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest --set gateway.peerBundleSecret=peer --set gateway.listener.enabled=true --set gateway.listener.hostPort=8443 --set-json 'gateway.imports=[{"name":"remote-k8s","port":22240,"listen":":22240","serviceIdentity":"spiffe://remote.test/ns/default/service/kubernetes","expectedSPIFFEID":"spiffe://remote.test/cluster/remote","sessionOnly":true}]' >/tmp/agent-listener.yaml
