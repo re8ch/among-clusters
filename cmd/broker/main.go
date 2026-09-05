@@ -59,7 +59,11 @@ func main() {
 	mux.HandleFunc("GET /v1/public-key", b.publicKey)
 	mux.HandleFunc("POST /v1/credentials", b.store)
 	mux.HandleFunc("POST /v1/credentials/revoke", b.revoke)
-	mux.HandleFunc("/k8s/", b.proxy)
+	// Kubernetes clients treat the server URL as an origin and replace any path
+	// prefix when constructing discovery and resource requests. Keep the explicit
+	// /k8s/{tenant}/{grant} route for browsers, and also accept API requests at
+	// the origin root by deriving the grant from the opaque bearer reference.
+	mux.HandleFunc("/", b.proxy)
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
 func (b *broker) revoke(w http.ResponseWriter, r *http.Request) {
@@ -195,14 +199,14 @@ func (b *broker) store(w http.ResponseWriter, r *http.Request) {
 	write(w, 201, map[string]string{"credentialRef": "credential://among-clusters/" + meta.Tenant + "/" + meta.GrantRef})
 }
 func (b *broker) proxy(w http.ResponseWriter, r *http.Request) {
-	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/k8s/"), "/", 3)
+	parts, opaqueRoute := kubernetesProxyParts(r)
 	if len(parts) < 2 {
 		http.NotFound(w, r)
 		return
 	}
 	expected := "Bearer credential://among-clusters/" + parts[0] + "/" + parts[1]
 	provided := r.Header.Get("Authorization")
-	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 && !b.authorizeKubernetesUser(r.Context(), strings.TrimPrefix(provided, "Bearer "), parts[0], parts[1]) {
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 && (opaqueRoute || !b.authorizeKubernetesUser(r.Context(), strings.TrimPrefix(provided, "Bearer "), parts[0], parts[1])) {
 		http.Error(w, "opaque credential reference required", http.StatusUnauthorized)
 		return
 	}
@@ -238,6 +242,26 @@ func (b *broker) proxy(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+payload.Token)
 	}
 	proxy.ServeHTTP(w, r)
+}
+
+func kubernetesProxyParts(r *http.Request) ([]string, bool) {
+	if strings.HasPrefix(r.URL.Path, "/k8s/") {
+		return strings.SplitN(strings.TrimPrefix(r.URL.Path, "/k8s/"), "/", 3), false
+	}
+	const prefix = "Bearer credential://among-clusters/"
+	provided := r.Header.Get("Authorization")
+	if !strings.HasPrefix(provided, prefix) {
+		return nil, true
+	}
+	grant := strings.Split(strings.TrimPrefix(provided, prefix), "/")
+	if len(grant) != 2 || grant[0] == "" || grant[1] == "" {
+		return nil, true
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	if path == "" {
+		return grant, true
+	}
+	return []string{grant[0], grant[1], path}, true
 }
 
 // authorizeKubernetesUser lets an authenticated local-cluster identity use a
