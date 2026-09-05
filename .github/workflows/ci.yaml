@@ -20,6 +20,7 @@ jobs:
           ! grep -q '^kind: Namespace$' /tmp/hub-managed.yaml
           helm lint charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest
           helm template agent charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest >/tmp/agent.yaml
+          helm template agent-listener charts/among-clusters-agent --set clusterID=test --set tenant=test --set trustDomain=test.example --set image.digest=$digest --set gateway.peerBundleSecret=peer --set gateway.listener.enabled=true --set gateway.listener.hostPort=8443 --set-json 'gateway.imports=[{"name":"remote-k8s","port":22240,"listen":":22240","serviceIdentity":"spiffe://remote.test/ns/default/service/kubernetes","expectedSPIFFEID":"spiffe://remote.test/cluster/remote","sessionOnly":true}]' >/tmp/agent-listener.yaml
           helm template agent-managed charts/among-clusters-agent --namespace tenant --set clusterID=test --set tenant=test --set trustDomain=test.example --set hubEndpoint=https://hub.example --set image.digest=$digest --set gateway.peerBundleSecret=peer --set managedAccess.enabled=true --set managedAccess.brokerEndpoint=https://hub.example/broker >/tmp/agent-managed.yaml
           helm lint charts/among-clusters-headlamp --set headlamp.pluginsPVC.existingClaim=plugins
           helm template headlamp charts/among-clusters-headlamp --set headlamp.pluginsPVC.existingClaim=plugins >/tmp/headlamp.yaml

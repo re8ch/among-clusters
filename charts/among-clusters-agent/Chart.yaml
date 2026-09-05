@@ -2,8 +2,8 @@ apiVersion: v2
 name: among-clusters-agent
 description: Owner-controlled AmongClusters identity agent and QUIC mTLS gateway
 type: application
-version: 0.3.18
-appVersion: 0.3.18
+version: 0.3.19
+appVersion: 0.3.19
 keywords: [byoc, multicluster, spiffe, quic, sovereign-peering]
 annotations:
   artifacthub.io/category: networking
