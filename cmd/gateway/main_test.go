@@ -95,3 +95,10 @@ func TestExportRouteDeniesIdentityOutsideTargetPeer(t *testing.T) {
 		t.Fatal("service route denied its explicitly configured target peer")
 	}
 }
+
+func TestWildcardExportRouteAllowsOnlyAfterMTLSAuthentication(t *testing.T) {
+	route := exportRoute{ServiceIdentity: "spiffe://remote/ns/default/service/api", TargetPeers: []string{"*"}}
+	if !routeAllowsIdentity(route, nil, "spiffe://approved.test/cluster/approved") {
+		t.Fatal("wildcard route denied an identity already authenticated by the peer trust bundle")
+	}
+}

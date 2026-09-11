@@ -60,6 +60,29 @@ func TestSignedSnapshotMaterializesOnlyPolicyAllowedService(t *testing.T) {
 	}
 }
 
+func TestWildcardSnapshotExpandsOnlyReadyUnsuspendedPeers(t *testing.T) {
+	identity := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ClusterIdentity", "metadata": map[string]any{"name": "re8ch", "namespace": "pilot"}, "spec": map[string]any{"clusterID": "re8ch", "trustDomain": "re8ch.internal", "gatewayEndpoints": []any{"quic://provider:8443"}}}}
+	ready := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "Peer", "metadata": map[string]any{"name": "re8ch-ready", "namespace": "pilot"}, "spec": map[string]any{"localIdentityRef": "re8ch", "remoteIdentityRef": "ready", "suspended": false}, "status": map[string]any{"state": "Ready"}}}
+	pending := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "Peer", "metadata": map[string]any{"name": "re8ch-pending", "namespace": "pilot"}, "spec": map[string]any{"localIdentityRef": "re8ch", "remoteIdentityRef": "pending", "suspended": false}, "status": map[string]any{"state": "PendingConfirmation"}}}
+	suspended := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "Peer", "metadata": map[string]any{"name": "re8ch-suspended", "namespace": "pilot"}, "spec": map[string]any{"localIdentityRef": "re8ch", "remoteIdentityRef": "suspended", "suspended": true}, "status": map[string]any{"state": "Ready"}}}
+	policy := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "PeerPolicy", "metadata": map[string]any{"name": "open-ready", "namespace": "pilot"}, "spec": map[string]any{"peerSelector": map[string]any{"matchAllReady": true}, "serviceClasses": []any{"network.egress.mihomo"}, "protocols": []any{"tcp"}, "ports": []any{int64(17891)}, "directions": []any{"export"}, "maxAdvertisements": int64(1)}}}
+	lists := map[schema.GroupVersionResource]string{advertisementsGVR: "ServiceAdvertisementList", importsGVR: "ImportedServiceList", peersGVR: "PeerList", schema.GroupVersionResource{Group: "peering.re8ch.com", Version: "v1alpha1", Resource: "peerpolicies"}: "PeerPolicyList"}
+	client := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), lists, identity, ready, pending, suspended, policy)
+	store := &KubernetesSovereignStore{Dynamic: client}
+	service := model.AdvertisedService{Name: "mihomos", Namespace: "egress-fabric", ServiceClass: "network.egress.mihomo", Protocol: "tcp", Port: 17891, TargetPeers: []string{"*"}, TTLSeconds: 60, PolicyRef: "open-ready", Generation: 1}
+	if err := store.SyncAdvertisements(context.Background(), "pilot", "re8ch", []model.AdvertisedService{service}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	ads, err := client.Resource(advertisementsGVR).Namespace("pilot").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(ads.Items) != 1 {
+		t.Fatalf("ads=%d err=%v", len(ads.Items), err)
+	}
+	targets := stringSlice(ads.Items[0].Object, "spec", "targetPeers")
+	if len(targets) != 1 || targets[0] != "re8ch-ready" {
+		t.Fatalf("target peers = %v, want only re8ch-ready", targets)
+	}
+}
+
 func TestPendingGrantCarriesExplicitClusterScope(t *testing.T) {
 	now := time.Now().UTC()
 	advertisement := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ServiceAdvertisement", "metadata": map[string]any{"name": "qwen-kubernetes", "namespace": "pilot"}, "spec": map[string]any{"publisherRef": "qwen", "protocol": "kubernetes-api"}}}
