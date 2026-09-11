@@ -10,6 +10,7 @@ import (
 	"github.com/re8ch/among-clusters/internal/model"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,10 +62,49 @@ func TestCapabilityRejectionDoesNotConsumeInvitation(t *testing.T) {
 	if err := store.CreateInvitation(context.Background(), invitation); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ConsumeInvitation(context.Background(), "invite", "hash", "tenant-a", []string{"service"}, now); err == nil {
+	if _, err := store.ConsumeInvitation(context.Background(), "invite", "hash", "tenant-a", "c1", []string{"service"}, now); err == nil {
 		t.Fatal("uninvited capability was accepted")
 	}
-	if _, err := store.ConsumeInvitation(context.Background(), "invite", "hash", "tenant-a", []string{"quic-mtls"}, now); err != nil {
+	if _, err := store.ConsumeInvitation(context.Background(), "invite", "hash", "tenant-a", "c1", []string{"quic-mtls"}, now); err != nil {
 		t.Fatalf("valid retry was consumed by rejected attempt: %v", err)
+	}
+}
+
+func TestOnboardingLinkNeedsOnlyRegionAndClusterAndConsumesOnce(t *testing.T) {
+	store := NewMemorySovereignStore()
+	now := time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)
+	server := &SovereignServer{Store: store, AdminToken: "admin", Now: func() time.Time { return now }, Onboarding: OnboardingConfig{PublicEndpoint: "https://among.example", Tenant: "byoc-pilot", ProviderSPIFFEID: "spiffe://provider/cluster/re8ch", ProviderBundleDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProviderQUICEndpoint: "quic://203.0.113.8:8443", ImageDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", ChartVersion: "0.3.24"}}
+	request := httptest.NewRequest(http.MethodPost, "/v1/onboarding-links", bytes.NewBufferString(`{"clusterID":"sijie","region":"cn-east"}`))
+	request.Header.Set("Authorization", "Bearer admin")
+	created := httptest.NewRecorder()
+	server.Handler().ServeHTTP(created, request)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", created.Code, created.Body.String())
+	}
+	var result map[string]any
+	_ = json.Unmarshal(created.Body.Bytes(), &result)
+	claimURL := result["claimURL"].(string)
+	path := strings.TrimPrefix(claimURL, "https://among.example")
+	first := httptest.NewRecorder()
+	server.Handler().ServeHTTP(first, httptest.NewRequest(http.MethodPost, path, nil))
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), "CLUSTER_ID='sijie'") {
+		t.Fatalf("consume: %d %s", first.Code, first.Body.String())
+	}
+	second := httptest.NewRecorder()
+	server.Handler().ServeHTTP(second, httptest.NewRequest(http.MethodPost, path, nil))
+	if second.Code != http.StatusGone {
+		t.Fatalf("reuse returned %d", second.Code)
+	}
+}
+
+func TestClusterBoundInvitationRejectsDifferentIdentity(t *testing.T) {
+	store := NewMemorySovereignStore()
+	now := time.Now().UTC()
+	invitation := model.Invitation{ID: "bound", Tenant: "byoc-pilot", ClusterID: "sijie", TokenHash: "hash", ExpiresAt: now.Add(time.Minute)}
+	if err := store.CreateInvitation(context.Background(), invitation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ConsumeInvitation(context.Background(), "bound", "hash", "byoc-pilot", "attacker", nil, now); err == nil || err.Error() != "cluster mismatch" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

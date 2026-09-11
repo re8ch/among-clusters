@@ -25,8 +25,10 @@ import (
 var identitiesGVR = schema.GroupVersionResource{Group: "peering.re8ch.com", Version: "v1alpha1", Resource: "clusteridentities"}
 
 type SovereignStore interface {
+	CreateOnboardingClaim(context.Context, model.OnboardingClaim) error
+	ConsumeOnboardingClaim(context.Context, string, string, string, time.Time) (model.OnboardingClaim, error)
 	CreateInvitation(context.Context, model.Invitation) error
-	ConsumeInvitation(context.Context, string, string, string, []string, time.Time) (model.Invitation, error)
+	ConsumeInvitation(context.Context, string, string, string, string, []string, time.Time) (model.Invitation, error)
 	RegisterIdentity(context.Context, model.IdentityRegistration) error
 	Identity(context.Context, string, string) (model.IdentityRegistration, error)
 	LastGeneration(context.Context, string, string) (uint64, error)
@@ -39,17 +41,47 @@ type SovereignStore interface {
 }
 
 type MemorySovereignStore struct {
-	mu             sync.Mutex
-	Invitations    map[string]model.Invitation
-	Identities     map[string]model.IdentityRegistration
-	Generations    map[string]uint64
-	Nonces         map[string]map[string]struct{}
-	Links          map[string]model.LinkObservation
-	Advertisements map[string][]model.AdvertisedService
+	mu               sync.Mutex
+	Invitations      map[string]model.Invitation
+	Identities       map[string]model.IdentityRegistration
+	Generations      map[string]uint64
+	Nonces           map[string]map[string]struct{}
+	Links            map[string]model.LinkObservation
+	Advertisements   map[string][]model.AdvertisedService
+	OnboardingClaims map[string]model.OnboardingClaim
 }
 
 func NewMemorySovereignStore() *MemorySovereignStore {
-	return &MemorySovereignStore{Invitations: map[string]model.Invitation{}, Identities: map[string]model.IdentityRegistration{}, Generations: map[string]uint64{}, Nonces: map[string]map[string]struct{}{}, Links: map[string]model.LinkObservation{}, Advertisements: map[string][]model.AdvertisedService{}}
+	return &MemorySovereignStore{Invitations: map[string]model.Invitation{}, Identities: map[string]model.IdentityRegistration{}, Generations: map[string]uint64{}, Nonces: map[string]map[string]struct{}{}, Links: map[string]model.LinkObservation{}, Advertisements: map[string][]model.AdvertisedService{}, OnboardingClaims: map[string]model.OnboardingClaim{}}
+}
+func (s *MemorySovereignStore) CreateOnboardingClaim(_ context.Context, v model.OnboardingClaim) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.OnboardingClaims[v.ID]; exists {
+		return errors.New("claim exists")
+	}
+	s.OnboardingClaims[v.ID] = v
+	return nil
+}
+func (s *MemorySovereignStore) ConsumeOnboardingClaim(_ context.Context, tenant, id, hash string, now time.Time) (model.OnboardingClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, exists := s.OnboardingClaims[id]
+	if !exists || v.TokenHash != hash {
+		return v, errors.New("invalid claim")
+	}
+	if v.Tenant != tenant {
+		return v, errors.New("invalid claim")
+	}
+	if !v.UsedAt.IsZero() {
+		return v, errors.New("claim already used")
+	}
+	if !now.Before(v.ExpiresAt) {
+		return v, errors.New("claim expired")
+	}
+	v.UsedAt = now
+	s.OnboardingClaims[id] = v
+	return v, nil
 }
 func (s *MemorySovereignStore) CreateInvitation(_ context.Context, v model.Invitation) error {
 	s.mu.Lock()
@@ -60,7 +92,7 @@ func (s *MemorySovereignStore) CreateInvitation(_ context.Context, v model.Invit
 	s.Invitations[v.ID] = v
 	return nil
 }
-func (s *MemorySovereignStore) ConsumeInvitation(_ context.Context, id, hash, tenant string, requested []string, now time.Time) (model.Invitation, error) {
+func (s *MemorySovereignStore) ConsumeInvitation(_ context.Context, id, hash, tenant, clusterID string, requested []string, now time.Time) (model.Invitation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, ok := s.Invitations[id]
@@ -69,6 +101,9 @@ func (s *MemorySovereignStore) ConsumeInvitation(_ context.Context, id, hash, te
 	}
 	if v.Tenant != tenant {
 		return v, errors.New("tenant mismatch")
+	}
+	if v.ClusterID != "" && v.ClusterID != clusterID {
+		return v, errors.New("cluster mismatch")
 	}
 	if !v.UsedAt.IsZero() {
 		return v, errors.New("invitation already used")
@@ -157,23 +192,58 @@ type KubernetesSovereignStore struct {
 	Core    kubernetes.Interface
 }
 
-func (s *KubernetesSovereignStore) CreateInvitation(ctx context.Context, v model.Invitation) error {
-	capabilities, _ := json.Marshal(v.Capabilities)
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "among-clusters-invite-" + v.ID, Namespace: v.Tenant, Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters"}, Annotations: map[string]string{"peering.re8ch.com/expires-at": v.ExpiresAt.Format(time.RFC3339)}}, Data: map[string][]byte{"token-hash": []byte(v.TokenHash), "capabilities": capabilities}}
+func (s *KubernetesSovereignStore) CreateOnboardingClaim(ctx context.Context, v model.OnboardingClaim) error {
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "among-clusters-claim-" + v.ID, Namespace: v.Tenant, Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters", "peering.re8ch.com/purpose": "onboarding-claim"}, Annotations: map[string]string{"peering.re8ch.com/expires-at": v.ExpiresAt.Format(time.RFC3339)}}, Data: map[string][]byte{"token-hash": []byte(v.TokenHash), "cluster-id": []byte(v.ClusterID), "region": []byte(v.Region)}}
 	_, err := s.Core.CoreV1().Secrets(v.Tenant).Create(ctx, secret, metav1.CreateOptions{})
 	return err
 }
-func (s *KubernetesSovereignStore) ConsumeInvitation(ctx context.Context, id, hash, tenant string, requested []string, now time.Time) (model.Invitation, error) {
+func (s *KubernetesSovereignStore) ConsumeOnboardingClaim(ctx context.Context, tenant, id, hash string, now time.Time) (model.OnboardingClaim, error) {
+	name := "among-clusters-claim-" + id
+	for attempts := 0; attempts < 3; attempts++ {
+		secret, err := s.Core.CoreV1().Secrets(tenant).Get(ctx, name, metav1.GetOptions{})
+		if err != nil || string(secret.Data["token-hash"]) != hash {
+			return model.OnboardingClaim{}, errors.New("invalid claim")
+		}
+		expires, _ := time.Parse(time.RFC3339, secret.Annotations["peering.re8ch.com/expires-at"])
+		v := model.OnboardingClaim{ID: id, ClusterID: string(secret.Data["cluster-id"]), Region: string(secret.Data["region"]), Tenant: tenant, TokenHash: hash, ExpiresAt: expires}
+		if secret.Annotations["peering.re8ch.com/used-at"] != "" {
+			return v, errors.New("claim already used")
+		}
+		if !now.Before(expires) {
+			return v, errors.New("claim expired")
+		}
+		secret.Annotations["peering.re8ch.com/used-at"] = now.Format(time.RFC3339Nano)
+		if _, err = s.Core.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{}); err == nil {
+			v.UsedAt = now
+			return v, nil
+		}
+		if !apierrors.IsConflict(err) {
+			return v, err
+		}
+	}
+	return model.OnboardingClaim{}, errors.New("claim update conflict")
+}
+
+func (s *KubernetesSovereignStore) CreateInvitation(ctx context.Context, v model.Invitation) error {
+	capabilities, _ := json.Marshal(v.Capabilities)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "among-clusters-invite-" + v.ID, Namespace: v.Tenant, Labels: map[string]string{"app.kubernetes.io/managed-by": "among-clusters"}, Annotations: map[string]string{"peering.re8ch.com/expires-at": v.ExpiresAt.Format(time.RFC3339)}}, Data: map[string][]byte{"token-hash": []byte(v.TokenHash), "capabilities": capabilities, "cluster-id": []byte(v.ClusterID), "region": []byte(v.Region)}}
+	_, err := s.Core.CoreV1().Secrets(v.Tenant).Create(ctx, secret, metav1.CreateOptions{})
+	return err
+}
+func (s *KubernetesSovereignStore) ConsumeInvitation(ctx context.Context, id, hash, tenant, clusterID string, requested []string, now time.Time) (model.Invitation, error) {
 	name := "among-clusters-invite-" + id
 	secret, err := s.Core.CoreV1().Secrets(tenant).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return model.Invitation{}, errors.New("invitation not found")
 	}
 	expires, _ := time.Parse(time.RFC3339, secret.Annotations["peering.re8ch.com/expires-at"])
-	v := model.Invitation{ID: id, Tenant: tenant, ExpiresAt: expires, TokenHash: string(secret.Data["token-hash"])}
+	v := model.Invitation{ID: id, Tenant: tenant, ClusterID: string(secret.Data["cluster-id"]), Region: string(secret.Data["region"]), ExpiresAt: expires, TokenHash: string(secret.Data["token-hash"])}
 	_ = json.Unmarshal(secret.Data["capabilities"], &v.Capabilities)
 	if v.TokenHash != hash {
 		return v, errors.New("invalid invitation")
+	}
+	if v.ClusterID != "" && v.ClusterID != clusterID {
+		return v, errors.New("cluster mismatch")
 	}
 	if secret.Annotations["peering.re8ch.com/used-at"] != "" {
 		return v, errors.New("invitation already used")
@@ -202,7 +272,7 @@ func capabilitiesAllowed(invited, requested []string) bool {
 	return true
 }
 func (s *KubernetesSovereignStore) RegisterIdentity(ctx context.Context, v model.IdentityRegistration) error {
-	obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ClusterIdentity", "metadata": map[string]any{"name": v.ClusterID, "namespace": v.Tenant}, "spec": map[string]any{"clusterID": v.ClusterID, "trustDomain": v.TrustDomain, "spiffeID": v.SPIFFEID, "bundleDigest": v.BundleDigest, "publicKey": v.PublicKey, "capabilities": stringValues(v.Capabilities), "gatewayEndpoints": stringValues(v.GatewayEndpoints)}}}
+	obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ClusterIdentity", "metadata": map[string]any{"name": v.ClusterID, "namespace": v.Tenant}, "spec": map[string]any{"clusterID": v.ClusterID, "region": v.Region, "trustDomain": v.TrustDomain, "spiffeID": v.SPIFFEID, "bundleDigest": v.BundleDigest, "publicKey": v.PublicKey, "capabilities": stringValues(v.Capabilities), "gatewayEndpoints": stringValues(v.GatewayEndpoints)}}}
 	_, err := s.Dynamic.Resource(identitiesGVR).Namespace(v.Tenant).Create(ctx, obj, metav1.CreateOptions{})
 	return err
 }
@@ -214,6 +284,7 @@ func (s *KubernetesSovereignStore) Identity(ctx context.Context, tenant, id stri
 	spec, _, _ := unstructured.NestedMap(obj.Object, "spec")
 	v := model.IdentityRegistration{Tenant: tenant, ClusterID: id}
 	v.TrustDomain, _ = spec["trustDomain"].(string)
+	v.Region, _ = spec["region"].(string)
 	v.SPIFFEID, _ = spec["spiffeID"].(string)
 	v.BundleDigest, _ = spec["bundleDigest"].(string)
 	v.PublicKey, _ = spec["publicKey"].(string)

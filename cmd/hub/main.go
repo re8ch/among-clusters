@@ -29,7 +29,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	server := &api.SovereignServer{Store: &api.KubernetesSovereignStore{Dynamic: client, Core: core}, AdminToken: os.Getenv("ADMIN_TOKEN")}
+	bundle, _ := os.ReadFile(os.Getenv("ONBOARDING_PROVIDER_BUNDLE_FILE"))
+	server := &api.SovereignServer{Store: &api.KubernetesSovereignStore{Dynamic: client, Core: core}, AdminToken: os.Getenv("ADMIN_TOKEN"), Onboarding: api.OnboardingConfig{
+		PublicEndpoint: os.Getenv("ONBOARDING_PUBLIC_ENDPOINT"), Tenant: os.Getenv("ONBOARDING_TENANT"),
+		ProviderSPIFFEID: os.Getenv("ONBOARDING_PROVIDER_SPIFFE_ID"), ProviderBundleDigest: os.Getenv("ONBOARDING_PROVIDER_BUNDLE_DIGEST"),
+		ProviderQUICEndpoint: os.Getenv("ONBOARDING_PROVIDER_QUIC_ENDPOINT"), ImageDigest: os.Getenv("ONBOARDING_IMAGE_DIGEST"),
+		ChartVersion: os.Getenv("ONBOARDING_CHART_VERSION"), ProviderBundlePEM: bundle,
+	}}
 	go (&api.SovereignReconciler{Client: client, Core: core, ManagedAccessEnabled: api.ManagedAccessFromEnv()}).Run(context.Background())
 	log.Printf("AmongClusters hub listening on %s", address)
 	log.Fatal(http.ListenAndServe(address, server.Handler()))

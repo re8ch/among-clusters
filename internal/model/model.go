@@ -19,6 +19,7 @@ type ControlMessage struct {
 
 type IdentityRegistration struct {
 	ClusterID        string   `json:"clusterID"`
+	Region           string   `json:"region,omitempty"`
 	Tenant           string   `json:"tenant"`
 	TrustDomain      string   `json:"trustDomain"`
 	SPIFFEID         string   `json:"spiffeID"`
@@ -31,6 +32,8 @@ type IdentityRegistration struct {
 type Invitation struct {
 	ID           string    `json:"id"`
 	Tenant       string    `json:"tenant"`
+	ClusterID    string    `json:"clusterID,omitempty"`
+	Region       string    `json:"region,omitempty"`
 	ExpiresAt    time.Time `json:"expiresAt"`
 	Capabilities []string  `json:"capabilities,omitempty"`
 	TokenHash    string    `json:"-"`
@@ -40,6 +43,16 @@ type InvitationAcceptance struct {
 	Token    string               `json:"token"`
 	Identity IdentityRegistration `json:"identity"`
 	Proof    string               `json:"proof"`
+}
+
+type OnboardingClaim struct {
+	ID        string
+	ClusterID string
+	Region    string
+	Tenant    string
+	TokenHash string
+	ExpiresAt time.Time
+	UsedAt    time.Time
 }
 
 type BundleConfirmation struct {

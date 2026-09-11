@@ -88,10 +88,15 @@ review artifact before initializing new peering objects.
 
 ## Headlamp
 
-`ui/headlamp-plugin` is an independent, read-only Headlamp package. It displays
+`ui/headlamp-plugin` is an independent Headlamp package. It displays
 trust domains, peers, authenticated links, advertisements, imported services,
-certificate/bundle state and failure reasons. It has no mutations, Secret reads,
-credential rendering or remote Kubernetes operations. The native Headlamp
+certificate/bundle state and failure reasons. Operators may publish opaque,
+short-lived onboarding claim URLs through the fixed
+`among-clusters-onboarding-links` ConfigMap. The plugin can only copy the URL;
+it does not create claims, read Secrets, render cluster credentials or operate a
+remote Kubernetes API. A claim is atomically consumed by POST and returns a
+15-minute invitation inside an installation Markdown document. The invitation
+is bound to the requested tenant, cluster ID, region and capabilities. The native Headlamp
 Artifact Hub metadata lives under `artifacthub/headlamp`.
 
 Release tags publish multi-architecture images with SBOM/provenance, all four

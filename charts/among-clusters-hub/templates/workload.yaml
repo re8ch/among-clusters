@@ -21,11 +21,30 @@ spec:
             - name: ADMIN_TOKEN
               valueFrom: {secretKeyRef: {name: "{{ .Values.adminTokenSecret }}", key: token}}
             - {name: MANAGED_ACCESS_ENABLED, value: {{ .Values.managedAccess.enabled | quote }}}
+            {{- if .Values.onboarding.enabled }}
+            - {name: ONBOARDING_PUBLIC_ENDPOINT, value: {{ required "onboarding.publicEndpoint is required" .Values.onboarding.publicEndpoint | quote }}}
+            - {name: ONBOARDING_TENANT, value: {{ required "onboarding.tenant is required" .Values.onboarding.tenant | quote }}}
+            - {name: ONBOARDING_PROVIDER_SPIFFE_ID, value: {{ required "onboarding.providerSPIFFEID is required" .Values.onboarding.providerSPIFFEID | quote }}}
+            - {name: ONBOARDING_PROVIDER_BUNDLE_DIGEST, value: {{ required "onboarding.providerBundleDigest is required" .Values.onboarding.providerBundleDigest | quote }}}
+            - {name: ONBOARDING_PROVIDER_QUIC_ENDPOINT, value: {{ required "onboarding.providerQUICEndpoint is required" .Values.onboarding.providerQUICEndpoint | quote }}}
+            - {name: ONBOARDING_IMAGE_DIGEST, value: {{ required "onboarding.imageDigest is required" .Values.onboarding.imageDigest | quote }}}
+            - {name: ONBOARDING_CHART_VERSION, value: {{ required "onboarding.chartVersion is required" .Values.onboarding.chartVersion | quote }}}
+            - {name: ONBOARDING_PROVIDER_BUNDLE_FILE, value: /provider-bundle/bundle.pem}
+            {{- end }}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.onboarding.enabled }}
+          volumeMounts:
+            - {name: provider-bundle, mountPath: /provider-bundle, readOnly: true}
+          {{- end }}
+      {{- if .Values.onboarding.enabled }}
+      volumes:
+        - name: provider-bundle
+          secret: {secretName: {{ required "onboarding.providerBundleSecret is required" .Values.onboarding.providerBundleSecret | quote }}}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

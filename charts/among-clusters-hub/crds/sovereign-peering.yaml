@@ -22,6 +22,7 @@ spec:
               required: [clusterID, trustDomain, spiffeID, bundleDigest, publicKey]
               properties:
                 clusterID: {type: string, minLength: 1, maxLength: 63}
+                region: {type: string, minLength: 1, maxLength: 63}
                 trustDomain: {type: string, pattern: '^[a-z0-9.-]+$'}
                 spiffeID: {type: string, pattern: '^spiffe://'}
                 bundleDigest: {type: string, pattern: '^sha256:[a-f0-9]{64}$'}
