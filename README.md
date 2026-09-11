@@ -54,6 +54,13 @@ never exposes Pod or EndpointSlice addresses. Each export also carries its
 target Peer refs; `gateway.peerIdentities` binds those refs to allowed caller
 SPIFFE IDs so trust-bundle membership alone never grants service access.
 
+A provider may deliberately advertise to every approved peer by setting
+`peerSelector.matchAllReady=true` on its `PeerPolicy` and `target-peers="*"` on
+the Service. The Hub expands the wildcard only to non-suspended `Peer` objects
+whose status is `Ready` and which include the publisher. At the Gateway, the
+wildcard admits only client identities whose certificates validate against the
+explicitly installed peer trust bundle; it does not permit anonymous clients.
+
 Managed Kubernetes access requires both `spec.approved=true` on the Hub grant
 and an owner-created `among-clusters-approval-<grant>` ConfigMap in the BYOC
 cluster. Only then does the Agent create namespace Roles, or a rule-defined
