@@ -126,7 +126,11 @@ spec:
               type: object
               required: [peerSelector, serviceClasses, protocols]
               properties:
-                peerSelector: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                peerSelector:
+                  type: object
+                  properties:
+                    matchNames: {type: array, items: {type: string}}
+                    matchAllReady: {type: boolean, default: false}
                 serviceClasses: {type: array, items: {type: string}}
                 protocols: {type: array, items: {type: string, enum: [http, https, tcp, tls, kubernetes-api]}}
                 ports: {type: array, items: {type: integer, minimum: 1, maximum: 65535}}
