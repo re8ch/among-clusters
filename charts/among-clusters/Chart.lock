@@ -1,12 +1,12 @@
 dependencies:
 - name: among-clusters-hub
   repository: file://../among-clusters-hub
-  version: 0.3.23
+  version: 0.3.24
 - name: among-clusters-agent
   repository: file://../among-clusters-agent
-  version: 0.3.23
+  version: 0.3.24
 - name: among-clusters-headlamp
   repository: file://../among-clusters-headlamp
-  version: 0.3.23
-digest: sha256:e94a83e4fb36d4a1d909a28d2d3214c9e30675c0509ce0f0d931456b40dcab37
-generated: "2026-09-11T10:56:01.090561+08:00"
+  version: 0.3.24
+digest: sha256:f7812d2c7c0b89a90d096e227aa6eef168be6212556b4a3ffd1c389046c1a5a6
+generated: "2026-09-11T13:41:09.490986+08:00"
