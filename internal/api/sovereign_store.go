@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -361,6 +362,32 @@ func (s *KubernetesSovereignStore) SyncAdvertisements(ctx context.Context, tenan
 			return fmt.Errorf("policy %s advertisement quota exceeded", service.PolicyRef)
 		}
 		selector := stringSlice(policy.Object, "spec", "peerSelector", "matchNames")
+		matchAllReady, _, _ := unstructured.NestedBool(policy.Object, "spec", "peerSelector", "matchAllReady")
+		targetPeers := append([]string(nil), service.TargetPeers...)
+		if len(targetPeers) == 1 && targetPeers[0] == "*" {
+			if !matchAllReady {
+				return fmt.Errorf("policy %s does not allow all Ready peers", service.PolicyRef)
+			}
+			peerList, listErr := s.Dynamic.Resource(peersGVR).Namespace(tenant).List(ctx, metav1.ListOptions{})
+			if listErr != nil {
+				return listErr
+			}
+			targetPeers = targetPeers[:0]
+			for i := range peerList.Items {
+				peer := &peerList.Items[i]
+				state, _, _ := unstructured.NestedString(peer.Object, "status", "state")
+				suspended, _, _ := unstructured.NestedBool(peer.Object, "spec", "suspended")
+				local, _, _ := unstructured.NestedString(peer.Object, "spec", "localIdentityRef")
+				remote, _, _ := unstructured.NestedString(peer.Object, "spec", "remoteIdentityRef")
+				if state == "Ready" && !suspended && (issuer == local || issuer == remote) {
+					targetPeers = append(targetPeers, peer.GetName())
+				}
+			}
+			sort.Strings(targetPeers)
+			if len(targetPeers) == 0 {
+				return fmt.Errorf("policy %s matches no Ready peers", service.PolicyRef)
+			}
+		}
 		portAllowed := len(portValues) == 0
 		for _, value := range portValues {
 			port, ok := value.(int64)
@@ -371,8 +398,8 @@ func (s *KubernetesSovereignStore) SyncAdvertisements(ctx context.Context, tenan
 		if !containsString(classes, service.ServiceClass) || !containsString(protocols, service.Protocol) || !containsString(directions, "export") || !portAllowed {
 			return fmt.Errorf("policy %s denies service contract", service.PolicyRef)
 		}
-		for _, peerRef := range service.TargetPeers {
-			if !containsString(selector, peerRef) {
+		for _, peerRef := range targetPeers {
+			if !matchAllReady && !containsString(selector, peerRef) {
 				return fmt.Errorf("policy %s denies peer %s", service.PolicyRef, peerRef)
 			}
 			peer, peerErr := s.Dynamic.Resource(peersGVR).Namespace(tenant).Get(ctx, peerRef, metav1.GetOptions{})
@@ -387,7 +414,7 @@ func (s *KubernetesSovereignStore) SyncAdvertisements(ctx context.Context, tenan
 		}
 		name := advertisementName(issuer, service)
 		seen[name] = struct{}{}
-		spec := map[string]any{"publisherRef": issuer, "serviceIdentity": fmt.Sprintf("spiffe://%s/ns/%s/service/%s", identity.TrustDomain, service.Namespace, service.Name), "serviceClass": service.ServiceClass, "protocol": service.Protocol, "port": int64(service.Port), "localServiceRef": map[string]any{"name": service.Name}, "gatewayEndpoints": stringValues(identity.GatewayEndpoints), "targetPeers": stringValues(service.TargetPeers), "ttlSeconds": service.TTLSeconds, "generation": service.Generation, "policyRef": service.PolicyRef, "revoked": false}
+		spec := map[string]any{"publisherRef": issuer, "serviceIdentity": fmt.Sprintf("spiffe://%s/ns/%s/service/%s", identity.TrustDomain, service.Namespace, service.Name), "serviceClass": service.ServiceClass, "protocol": service.Protocol, "port": int64(service.Port), "localServiceRef": map[string]any{"name": service.Name}, "gatewayEndpoints": stringValues(identity.GatewayEndpoints), "targetPeers": stringValues(targetPeers), "ttlSeconds": service.TTLSeconds, "generation": service.Generation, "policyRef": service.PolicyRef, "revoked": false}
 		object := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "peering.re8ch.com/v1alpha1", "kind": "ServiceAdvertisement", "metadata": map[string]any{"name": name, "namespace": tenant, "labels": map[string]any{"peering.re8ch.com/publisher": issuer}, "annotations": map[string]any{"peering.re8ch.com/last-published-at": now.UTC().Format(time.RFC3339)}}, "spec": spec}}
 		existing, getErr := s.Dynamic.Resource(advertisementsGVR).Namespace(tenant).Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(getErr) {
@@ -401,7 +428,7 @@ func (s *KubernetesSovereignStore) SyncAdvertisements(ctx context.Context, tenan
 		if err != nil {
 			return err
 		}
-		for _, peerRef := range service.TargetPeers {
+		for _, peerRef := range targetPeers {
 			importName := name + "-" + peerRef
 			if len(importName) > 63 {
 				importName = importName[:63]

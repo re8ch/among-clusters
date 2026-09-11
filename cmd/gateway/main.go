@@ -324,6 +324,12 @@ func handleExport(stream readWriteCloser, routes map[string]exportRoute, peerIde
 func routeAllowsIdentity(route exportRoute, peerIdentities map[string][]string, identity string) bool {
 	identity = strings.TrimSuffix(identity, "/")
 	for _, peer := range route.TargetPeers {
+		// A wildcard route still sits behind RequireAndVerifyClientCert. It admits
+		// any identity rooted in the explicitly installed peer trust bundle; it
+		// never turns the listener into an anonymous public proxy.
+		if peer == "*" {
+			return true
+		}
 		for _, allowed := range peerIdentities[peer] {
 			if strings.TrimSuffix(allowed, "/") == identity {
 				return true
