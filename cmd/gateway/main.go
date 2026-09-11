@@ -216,17 +216,22 @@ func serveQUIC(ctx context.Context, cert tls.Certificate, roots *x509.CertPool, 
 				return
 			}
 			peerIdentity := canonicalIdentity(certificates[0].URIs[0].String())
-			handleConnection(ctx, connection, peerIdentity, routes, peerIdentities, registry)
+			// The dialer owns application-level heartbeats. The accepting side only
+			// acknowledges them; running heartbeat loops on both ends can race stream
+			// handling and tear down an otherwise healthy outbound-only BYOC session.
+			handleConnection(ctx, connection, peerIdentity, routes, peerIdentities, registry, false)
 		}()
 	}
 }
 
-func handleConnection(ctx context.Context, connection *quic.Conn, peerIdentity string, routes map[string]exportRoute, peerIdentities map[string][]string, registry *sessionRegistry) {
+func handleConnection(ctx context.Context, connection *quic.Conn, peerIdentity string, routes map[string]exportRoute, peerIdentities map[string][]string, registry *sessionRegistry, maintainHeartbeat bool) {
 	registry.put(peerIdentity, connection)
 	defer registry.remove(peerIdentity, connection)
-	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-	defer cancelHeartbeat()
-	go maintainConnectionHeartbeat(heartbeatCtx, connection)
+	if maintainHeartbeat {
+		heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+		defer cancelHeartbeat()
+		go maintainConnectionHeartbeat(heartbeatCtx, connection)
+	}
 	for {
 		stream, err := connection.AcceptStream(ctx)
 		if err != nil {
@@ -288,7 +293,7 @@ func maintainSession(ctx context.Context, cert tls.Certificate, roots *x509.Cert
 			}
 			continue
 		}
-		handleConnection(ctx, connection, session.ExpectedSPIFFEID, routes, peerIdentities, registry)
+		handleConnection(ctx, connection, session.ExpectedSPIFFEID, routes, peerIdentities, registry, true)
 		connection.CloseWithError(0, "reconnecting")
 	}
 }
