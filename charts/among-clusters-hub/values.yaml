@@ -22,6 +22,16 @@ publication:
   selectedEdge: ""
 ciliumPolicy:
   enabled: false
+onboarding:
+  enabled: false
+  publicEndpoint: ""
+  tenant: ""
+  providerSPIFFEID: ""
+  providerBundleDigest: ""
+  providerBundleSecret: ""
+  providerQUICEndpoint: ""
+  imageDigest: ""
+  chartVersion: ""
 resources:
   requests: {cpu: 50m, memory: 64Mi}
   limits: {cpu: 500m, memory: 256Mi}

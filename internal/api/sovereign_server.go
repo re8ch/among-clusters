@@ -15,6 +15,7 @@ import (
 type SovereignServer struct {
 	Store      SovereignStore
 	AdminToken string
+	Onboarding OnboardingConfig
 	Now        func() time.Time
 }
 
@@ -28,6 +29,9 @@ func (s *SovereignServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	mux.HandleFunc("POST /v1/invitations", s.createInvitation)
+	mux.HandleFunc("POST /v1/onboarding-links", s.createOnboardingLink)
+	mux.HandleFunc("POST /v1/onboarding/{id}", s.consumeOnboarding)
+	mux.HandleFunc("GET /v1/provider-bundle", s.providerBundle)
 	mux.HandleFunc("POST /v1/invitations/{id}/accept", s.acceptInvitation)
 	mux.HandleFunc("POST /v1/peers/{tenant}/{clusterID}/messages", s.controlMessage)
 	mux.HandleFunc("GET /v1/identities/{tenant}/{clusterID}", func(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +100,7 @@ func (s *SovereignServer) acceptInvitation(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid ownership proof", 401)
 		return
 	}
-	inv, err := s.Store.ConsumeInvitation(r.Context(), r.PathValue("id"), protocol.TokenHash(input.Token), input.Identity.Tenant, input.Identity.Capabilities, s.now())
+	inv, err := s.Store.ConsumeInvitation(r.Context(), r.PathValue("id"), protocol.TokenHash(input.Token), input.Identity.Tenant, input.Identity.ClusterID, input.Identity.Capabilities, s.now())
 	if err != nil {
 		status := http.StatusUnauthorized
 		if err.Error() == "capability not invited" {
@@ -109,6 +113,7 @@ func (s *SovereignServer) acceptInvitation(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "tenant mismatch", 403)
 		return
 	}
+	input.Identity.Region = inv.Region
 	if err = s.Store.RegisterIdentity(r.Context(), input.Identity); err != nil {
 		http.Error(w, "identity conflict", 409)
 		return
