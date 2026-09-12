@@ -20,8 +20,8 @@ jobs:
       - name: Publish per-chart repository metadata
         run: |
           for chart in among-clusters-hub among-clusters-agent among-clusters-headlamp among-clusters; do
-            oras push "ghcr.io/re8ch/charts/$chart:artifacthub.io" \
+            oras push "ghcr.io/among-clusters/charts/$chart:artifacthub.io" \
               --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
               "artifacthub/helm/$chart/artifacthub-repo.yml":application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
-            cosign sign --yes "ghcr.io/re8ch/charts/$chart:artifacthub.io"
+            cosign sign --yes "ghcr.io/among-clusters/charts/$chart:artifacthub.io"
           done

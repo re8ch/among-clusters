@@ -139,9 +139,9 @@ curl -fsS '%[3]s/v1/provider-bundle' -o re8ch-peer-ca.crt
 kubectl -n among-clusters create secret generic among-clusters-invitation --from-literal=invitation-id="$INVITATION_ID" --from-literal=token="$INVITATION_TOKEN"
 kubectl -n among-clusters create secret generic among-clusters-peer-bundle --from-file=ca.crt=./re8ch-peer-ca.crt
 
-helm upgrade --install among-clusters-agent oci://ghcr.io/re8ch/charts/among-clusters-agent --version %[7]s --namespace among-clusters \
+helm upgrade --install among-clusters-agent oci://ghcr.io/among-clusters/charts/among-clusters-agent --version %[7]s --namespace among-clusters \
   --set-string clusterID="$CLUSTER_ID" --set-string tenant=%[8]s --set-string trustDomain="$CLUSTER_ID.byoc" \
-  --set-string hubEndpoint=%[3]s --set-string image.repository=ghcr.io/re8ch/among-clusters --set-string image.digest=%[9]s \
+  --set-string hubEndpoint=%[3]s --set-string image.repository=ghcr.io/among-clusters/among-clusters --set-string image.digest=%[9]s \
   --set-string gateway.peerBundleSecret=among-clusters-peer-bundle \
   --set-string "peerConfirmations[0].peerRef=re8ch-$CLUSTER_ID" --set-string "peerConfirmations[0].bundleDigest=%[10]s" \
   --set-string "gateway.sessions[0].endpoint=%[4]s" --set-string "gateway.sessions[0].expectedSPIFFEID=%[11]s" \

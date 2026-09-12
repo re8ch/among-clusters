@@ -27,14 +27,14 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/re8ch/among-clusters:${{ github.ref_name }}
+          tags: ghcr.io/among-clusters/among-clusters:${{ github.ref_name }}
           platforms: linux/amd64,linux/arm64
           provenance: mode=max
           sbom: true
       - uses: sigstore/cosign-installer@v3
       - name: Keyless-sign immutable image
         env: {DIGEST: "${{ steps.image.outputs.digest }}"}
-        run: cosign sign --yes "ghcr.io/re8ch/among-clusters@$DIGEST"
+        run: cosign sign --yes "ghcr.io/among-clusters/among-clusters@$DIGEST"
       - uses: azure/setup-helm@v4
       - uses: oras-project/setup-oras@v1
       - name: Package and publish four OCI charts
@@ -46,17 +46,17 @@ jobs:
           for chart in among-clusters-hub among-clusters-agent among-clusters-headlamp among-clusters; do
             helm package charts/$chart --destination dist
             for attempt in 1 2 3; do
-              if helm push "dist/$chart-$version.tgz" oci://ghcr.io/re8ch/charts; then
+              if helm push "dist/$chart-$version.tgz" oci://ghcr.io/among-clusters/charts; then
                 break
               fi
               test "$attempt" -lt 3
               sleep $((attempt * 5))
             done
-            cosign sign --yes "ghcr.io/re8ch/charts/$chart:$version"
-            oras push ghcr.io/re8ch/charts/$chart:artifacthub.io \
+            cosign sign --yes "ghcr.io/among-clusters/charts/$chart:$version"
+            oras push ghcr.io/among-clusters/charts/$chart:artifacthub.io \
               --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
               "artifacthub/helm/$chart/artifacthub-repo.yml":application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
-            cosign sign --yes ghcr.io/re8ch/charts/$chart:artifacthub.io
+            cosign sign --yes ghcr.io/among-clusters/charts/$chart:artifacthub.io
           done
       - name: Verify and publish native Headlamp archive
         env:
